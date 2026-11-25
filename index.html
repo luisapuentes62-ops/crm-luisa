@@ -129,6 +129,21 @@ legend{font-size:12px;font-weight:600;color:var(--muted);padding:0 4px}
 .tc-b{padding:8px 10px 10px;display:flex;flex-direction:column;gap:6px}
 .tc-copy{white-space:pre-wrap;max-height:8em;overflow:auto}
 .ccard{border-left:4px solid var(--bc)}
+.anls{display:flex;flex-direction:column;gap:10px;margin-top:12px}
+.anl{font-size:13.5px;border-left:4px solid var(--bc);padding:12px 14px}
+.anl>summary{cursor:pointer;font-weight:600;color:var(--muted);list-style:none;font-size:13.5px}
+.anl-b{max-width:760px}
+.anl>summary::-webkit-details-marker{display:none}
+.anl p{margin:6px 0}
+.anl .k{font-size:11.5px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.03em;margin-top:10px}
+.anl ul{margin:4px 0;padding-left:18px}
+.anl li{margin:2px 0}
+.cj{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:3px 14px;max-width:560px;margin-top:4px;align-items:center}
+.cj .n{min-width:0}
+.cj .bar{grid-column:1/-1;height:5px;border-radius:3px;background:var(--soft);overflow:hidden;margin-bottom:4px}
+.cj .bar i{display:block;height:100%;background:var(--bc)}
+.cj .r{text-align:right;font-variant-numeric:tabular-nums}
+.cj .hi{color:#b3261e;font-weight:600}.cj .lo{color:#127a55;font-weight:600}
 .buf{border:1px dashed var(--line);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:6px}
 .buf-h{display:flex;align-items:center;gap:8px;justify-content:space-between}
 .buf-logo{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
@@ -297,7 +312,7 @@ select.mini{width:auto;font-size:12px;padding:3px 6px}
 const MARCAS=['Ecolombia Tours','Crear Emprendedor','Crear Solutions','Quindieléctricos','Tecnocámaras','CAVPRO'];
 const COLORES={'Ecolombia Tours':'#1baf7a','Crear Emprendedor':'#eb6834','Crear Solutions':'#6250d6','Quindieléctricos':'#eda100','Tecnocámaras':'#2a78d6','CAVPRO':'#e87ba4'};
 const bc=m=>COLORES[m]||'#9ca3af';
-const SIN_PAUTA=['CAVPRO','Crear Emprendedor'];
+const SIN_PAUTA=['CAVPRO'];
 const ESTADOS_C={borrador:'Borrador',activa:'Activa',pausada:'Pausada',terminada:'Terminada'};
 const cop=n=>new Intl.NumberFormat('es-CO',{style:'currency',currency:'COP',maximumFractionDigits:0}).format(n||0);
 const num=v=>{const n=Number(String(v||'').replace(/[^\d]/g,''));return isFinite(n)?n:0};
@@ -561,7 +576,8 @@ function renderCampanas(){
     const head=h('div',{class:'section-head',style:'margin-bottom:10px'},h('h3',{text:m}),
       list.length?h('span',{class:'note',text:list.filter(c=>c.estado==='activa').length+' activas'}):h('span',{class:'pill p-idea',text:SIN_PAUTA.includes(m)?'Sin pauta por ahora':'Sin campañas registradas'}),
       h('span',{class:'spacer'}),canWrite?h('button',{class:'btn small',onclick:()=>openCamp(null,m)},'Agregar'):null);
-    stack.append(h('div',null,head,list.length?h('div',{class:'ideas'},list.map(campCard)):h('p',{class:'empty',text:SIN_PAUTA.includes(m)?'El espacio queda listo para cuando empiece la pauta.':'Registra aquí sus campañas.'})));
+    const anls=list.map(c=>campAnalisis(c)).filter(Boolean);
+    stack.append(h('div',null,head,list.length?h('div',null,h('div',{class:'ideas'},list.map(campCard)),anls.length?h('div',{class:'anls'},anls):null):h('p',{class:'empty',text:SIN_PAUTA.includes(m)?'El espacio queda listo para cuando empiece la pauta.':'Registra aquí sus campañas.'})));
   }
   v.append(stack);
 }
@@ -575,6 +591,28 @@ function campCard(c){
     h('div',{class:'meta',text:[c.presupuesto?cop(c.presupuesto)+'/día':null,c.inicio?('desde '+fechaCorta(c.inicio)):null].filter(Boolean).join(' · ')}),
     c.resultados?h('div',{class:'meta',style:'color:var(--ink)',text:cop(c.inversion)+' · '+c.resultados+' '+(c.tipo||'resultados').toLowerCase()+' · '+cop(cpr)+' c/u'}):null,
     h('div',{class:'foot'},h('span',{class:'pill '+cls,text:ESTADOS_C[c.estado||'borrador']}),av(c.responsable,'pub','Responsable'),c.corte?h('span',{class:'meta',text:'datos al '+fechaCorta(c.corte)}):null));
+}
+function campAnalisis(c,cpr){
+  const a=c.analisis||{},cj=(c.conjuntos||[]).filter(x=>x&&x.nombre);
+  if(!a.resumen&&!cj.length&&!(a.bien||[]).length&&!(a.mejorar||[]).length)return null;
+  cpr=cpr??(c.resultados?Math.round((c.inversion||0)/c.resultados):0);
+  const body=[];
+  if(a.resumen)body.push(h('p',{text:a.resumen}));
+  if(cj.length){
+    const maxR=Math.max(...cj.map(x=>x.resultados||0),1);
+    const rows=[];
+    for(const x of [...cj].sort((p,q)=>(q.resultados||0)-(p.resultados||0))){
+      const cc=x.cpr||(x.resultados?Math.round((x.inversion||0)/x.resultados):0);
+      const cl=cpr&&cc?(cc>cpr*1.2?'hi':cc<cpr*0.9?'lo':''):'';
+      rows.push(h('span',{class:'n',text:x.nombre}),h('span',{class:'r',text:(x.resultados||0)+' '+(c.tipo||'resultados').toLowerCase()}),h('span',{class:'r '+cl,text:cc?cop(cc)+' c/u':'—'}),
+        h('div',{class:'bar'},h('i',{style:'width:'+((x.resultados||0)/maxR*100)+'%'})));
+    }
+    body.push(h('div',{class:'k',text:'Por conjunto de anuncios'}),h('div',{class:'cj'},rows));
+  }
+  if((a.bien||[]).length)body.push(h('div',{class:'k',text:'Lo que funciona'}),h('ul',null,a.bien.map(t=>h('li',{text:t}))));
+  if((a.mejorar||[]).length)body.push(h('div',{class:'k',text:'Qué mejorar'}),h('ul',null,a.mejorar.map(t=>h('li',{text:t}))));
+  if(a.fecha)body.push(h('p',{class:'meta',text:'Análisis del '+fechaCorta(a.fecha)}));
+  return keepOpen(h('details',{class:'panel anl',style:'--bc:'+bc(c.marca)},h('summary',null,'Análisis · ',h('span',{style:'color:var(--ink)',text:c.nombre||'Sin nombre'}),cpr?h('span',{class:'meta',text:'  ·  '+(c.resultados||0)+' '+(c.tipo||'resultados').toLowerCase()+' a '+cop(cpr)+' c/u'}):null),h('div',{class:'anl-b'},body)),'anl:'+c.id,true);
 }
 let editingCamp=null;
 function openCamp(c,marca){
@@ -598,7 +636,8 @@ $('#form-camp').addEventListener('submit',async ev=>{ev.preventDefault();
   const hist=(editingCamp?.historial||[]).filter(x=>x.fecha!==d.corte);
   if(d.corte&&(d.inversion||d.resultados))hist.push({fecha:d.corte,inversion:d.inversion,resultados:d.resultados});
   d.historial=hist.sort((a,b)=>a.fecha.localeCompare(b.fecha));
-  try{if(editingCamp)await db.collection('campanas').doc(editingCamp.id).set({...d,creado:editingCamp.creado||d.actualizado});else await db.collection('campanas').add({...d,creado:d.actualizado});
+  const extra={};if(editingCamp){for(const k of['analisis','conjuntos'])if(editingCamp[k]!==undefined)extra[k]=editingCamp[k]}
+  try{if(editingCamp)await db.collection('campanas').doc(editingCamp.id).set({...extra,...d,creado:editingCamp.creado||d.actualizado});else await db.collection('campanas').add({...d,creado:d.actualizado});
     $('#dlg-camp').close();toast('Campaña guardada')}catch(e){writeFail(e)}});
 $('#camp-del').addEventListener('click',async e=>{const b=e.currentTarget;if(!b.dataset.armed){b.dataset.armed='1';b.textContent='¿Seguro? Toca otra vez';return}
   try{await db.collection('campanas').doc(editingCamp.id).delete();$('#dlg-camp').close();toast('Campaña eliminada')}catch(err){writeFail(err)}});
