@@ -157,16 +157,20 @@ details.more>summary{cursor:pointer;font-size:12px;font-weight:600;color:var(--l
 details.more>summary::-webkit-details-marker{display:none}
 select.mini{width:auto;font-size:12px;padding:3px 6px}
 .tareas{display:flex;flex-direction:column;gap:6px}
-.tarea{display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:8px;border-left:4px solid var(--bc);background:var(--soft);cursor:pointer}
+.tarea{display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-radius:8px;border-left:4px solid var(--bc);background:var(--soft)}
 .tarea input{margin-top:3px;accent-color:var(--primary)}
 .tarea .tx{flex:1;min-width:0;display:flex;flex-direction:column}
 .tarea .tt{font-size:13px;font-weight:500;overflow-wrap:anywhere}
 .tarea .m,.prox .m{font-size:11px;color:var(--muted)}
 .tarea.ok .tt{text-decoration:line-through;color:var(--muted)}
 .tarea .btn{padding:2px 8px}
+.tarea .tt.ed{background:none;border:0;padding:0;text-align:left;font:inherit;font-size:13px;font-weight:500;color:inherit;cursor:pointer}
+.tarea .tt.ed:hover{text-decoration:underline}
+.tarea .av{margin-top:3px}
+.prox .tt.ed{background:none;border:0;padding:0;text-align:left;font:inherit;color:inherit;cursor:pointer}
 .sub-h{font-size:12px;font-weight:600;color:var(--bad);margin-top:6px}
 .prox{display:flex;align-items:center;gap:8px;font-size:13px;flex-wrap:wrap}
-.tarea-add{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;gap:6px;margin-top:8px}
+.tarea-add{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto auto;gap:6px;margin-top:8px}
 @media (max-width:600px){.tarea-add{grid-template-columns:1fr 1fr}}
 .tarea-add input,.tarea-add select{font-size:13px;padding:6px 8px}
 /* análisis */
@@ -290,6 +294,26 @@ select.mini{width:auto;font-size:12px;padding:3px 6px}
   </div>
 </form></dialog>
 
+<dialog id="dlg-tarea"><form id="form-tarea" method="dialog">
+  <div class="dlg-h"><h2 id="tarea-title">Tarea</h2><button type="button" class="btn small" data-close>Cerrar</button></div>
+  <div class="dlg-b">
+    <label class="f">Tarea<textarea id="ta-texto" rows="2" required></textarea></label>
+    <div class="grid2">
+      <label class="f">Responsable<select id="ta-resp"></select></label>
+      <label class="f">Marca<select id="ta-marca"></select></label>
+      <label class="f">Desde<input type="date" id="ta-desde" required></label>
+      <label class="f">Hasta (fecha límite)<input type="date" id="ta-hasta"></label>
+    </div>
+    <label class="f" style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" id="ta-fija" style="width:auto">Se repite todos los días (tarea fija)</label>
+  </div>
+  <div class="dlg-f">
+    <button type="button" class="btn danger" id="tarea-del" hidden>Eliminar</button>
+    <span class="spacer"></span>
+    <button type="button" class="btn" data-close>Cancelar</button>
+    <button type="submit" class="btn primary" id="tarea-save">Guardar</button>
+  </div>
+</form></dialog>
+
 <dialog id="dlg-member"><form id="form-member" method="dialog">
   <div class="dlg-h"><h2 id="member-title">Persona del equipo</h2><button type="button" class="btn small" data-close>Cerrar</button></div>
   <div class="dlg-b"><div class="grid2">
@@ -382,10 +406,14 @@ function renderHoy(){
   if(!team.length)grid.append(h('div',{class:'panel'},h('p',{class:'note',text:'Agrega a tu equipo en la pestaña Equipo para asignar tareas.'})));
   for(const m of [...team].sort((a,b)=>a.nombre.localeCompare(b.nombre))){
     const ts=P.flatMap(p=>tareasDe(p).filter(x=>x.quien===m.id&&x.limite<=horizonte).map(x=>({...x,p}))).sort((a,b)=>a.limite.localeCompare(b.limite));
-    const late=ts.some(x=>x.limite<t);
-    grid.append(fold(m.nombre,ts.length,false,
-      ts.length?ts.map(x=>h('div',{class:'task',style:'--bc:'+bc(x.p.marca)},h('i',{class:'bdot',style:'margin-top:5px'}),h('div',{class:'tx'},h('button',{type:'button',onclick:()=>openPost(x.p)},x.que+': '+(x.p.tema||'Sin tema')),h('div',{class:'m',text:x.p.marca+' · '+x.p.red+' · '+x.p.formato})),
-        h('span',{class:'d'+(x.limite<t?' tarde':''),text:x.limite<t?'Atrasada':(x.limite===t?'Hoy':fechaCorta(x.limite))}))):h('p',{class:'empty',text:'Sin pendientes para hoy ni los próximos 2 días.'}),
+    const tt=tareas.filter(x=>x.responsable===m.id&&(x.desde||'')<=horizonte&&!hechaEn(x,t)&&(tareaHoy(x,t)||(x.desde||'')>t||!(x.hechoDias||[]).length));
+    const late=ts.some(x=>x.limite<t)||tt.some(x=>(x.hasta||x.desde)<t);
+    const trows=tt.map(x=>{const lim=x.hasta||x.desde;return h('div',{class:'task',style:'--bc:'+(x.marca?bc(x.marca):'var(--line)')},h('i',{class:'bdot',style:'margin-top:5px'}),h('div',{class:'tx'},h('button',{type:'button',onclick:()=>openTarea(x)},x.texto),h('div',{class:'m',text:['Tarea',x.marca].filter(Boolean).join(' · ')})),
+        h('span',{class:'d'+(lim<t?' tarde':''),text:lim<t?'Atrasada':(x.fija?'Diaria':(lim===t?'Hoy':'Hasta '+fechaCorta(lim)))}))});
+    const n=ts.length+tt.length;
+    grid.append(fold(m.nombre,n,false,
+      n?[...trows,...ts.map(x=>h('div',{class:'task',style:'--bc:'+bc(x.p.marca)},h('i',{class:'bdot',style:'margin-top:5px'}),h('div',{class:'tx'},h('button',{type:'button',onclick:()=>openPost(x.p)},x.que+': '+(x.p.tema||'Sin tema')),h('div',{class:'m',text:x.p.marca+' · '+x.p.red+' · '+x.p.formato})),
+        h('span',{class:'d'+(x.limite<t?' tarde':''),text:x.limite<t?'Atrasada':(x.limite===t?'Hoy':fechaCorta(x.limite))})))]:h('p',{class:'empty',text:'Sin pendientes para hoy ni los próximos 2 días.'}),
       h('span',null,h('span',{class:'rl',text:m.rol}),late?h('span',{class:'pill p-tarde',style:'margin-left:8px',text:'Atrasada'}):null)));
   }
   stack.append(h('div',null,h('h3',{text:'Por persona (hoy y próximos 2 días)',style:'margin-bottom:10px'}),grid));
@@ -407,9 +435,10 @@ function tareaRow(x,t,late){
   cb.addEventListener('change',()=>toggleTarea(x,t,cb.checked));
   const del=h('button',{class:'btn small',type:'button',title:'Eliminar',disabled:!canWrite},'✕');
   del.addEventListener('click',async()=>{if(!del.dataset.armed){del.dataset.armed='1';del.textContent='¿Eliminar?';return}try{await db.collection('tareas').doc(x.id).delete()}catch(e){writeFail(e)}});
-  const multi=x.hasta&&x.hasta!==x.desde;
-  return h('label',{class:'tarea'+(cb.checked?' ok':''),style:'--bc:'+(x.marca?bc(x.marca):'var(--line)')},cb,
-    h('span',{class:'tx'},h('span',{class:'tt',text:x.texto}),h('span',{class:'m',text:[x.marca,multi?('hasta el '+fechaCorta(x.hasta)):null,late?('era para el '+fechaCorta(x.hasta||x.desde)):null].filter(Boolean).join(' · ')})),del);
+  const multi=x.hasta&&x.hasta!==x.desde&&!x.fija;
+  return h('div',{class:'tarea'+(cb.checked?' ok':''),style:'--bc:'+(x.marca?bc(x.marca):'var(--line)')},cb,
+    h('span',{class:'tx'},h('button',{type:'button',class:'tt ed',title:'Editar tarea',onclick:()=>openTarea(x)},x.texto),h('span',{class:'m',text:[x.marca,multi?('hasta el '+fechaCorta(x.hasta)):null,late?('era para el '+fechaCorta(x.hasta||x.desde)):null].filter(Boolean).join(' · ')})),
+    av(x.responsable,'pub','Responsable'),del);
 }
 function pendientesBox(){
   const t=today();
@@ -422,15 +451,36 @@ function pendientesBox(){
   const inp=h('input',{placeholder:'Nuevo pendiente…','aria-label':'Nuevo pendiente'});
   const fch=h('input',{type:'date','aria-label':'Fecha'});fch.value=t;
   const mar=h('select',{'aria-label':'Marca'},h('option',{value:'',text:'Sin marca'}),MARCAS.map(m=>h('option',{text:m})));
-  const add=async e=>{e.preventDefault();const v=inp.value.trim();if(!v)return;try{await db.collection('tareas').add({texto:v,desde:fch.value||t,hasta:fch.value||t,marca:mar.value,hechoDias:[],creado:new Date().toISOString()});inp.value=''}catch(err){writeFail(err)}};
-  const form=h('form',{class:'tarea-add',onsubmit:add},inp,fch,mar,h('button',{class:'btn small primary',type:'submit',disabled:!canWrite},'Agregar'));
+  const resp=h('select',{'aria-label':'Responsable'});fillPeople(resp,null,'','Yo');
+  const add=async e=>{e.preventDefault();const v=inp.value.trim();if(!v)return;try{await db.collection('tareas').add({texto:v,desde:fch.value||t,hasta:fch.value||t,marca:mar.value,responsable:resp.value,hechoDias:[],creado:new Date().toISOString()});inp.value=''}catch(err){writeFail(err)}};
+  const form=h('form',{class:'tarea-add',onsubmit:add},inp,fch,resp,mar,h('button',{class:'btn small primary',type:'submit',disabled:!canWrite},'Agregar'));
   const body=h('div',{class:'tareas'},
     hoyT.length?hoyT.map(x=>tareaRow(x,t,false)):h('p',{class:'empty',text:'Nada pendiente para hoy.'}),
     late.length?h('div',{class:'sub-h',text:'Atrasados'}):null, late.map(x=>tareaRow(x,x.hasta||x.desde,true)),
-    prox.length?keepOpen(h('details',{class:'more'},h('summary',{text:'Próximos días ('+prox.length+')'}),h('div',{class:'tareas',style:'margin-top:6px'},prox.map(x=>h('div',{class:'prox',style:'--bc:'+(x.marca?bc(x.marca):'var(--line)')},h('i',{class:'bdot'}),h('span',{class:'tt',text:x.texto}),h('span',{class:'m',text:fechaCorta(x.desde)+(x.marca?' · '+x.marca:'')}))))),'prox',false):null,
+    prox.length?keepOpen(h('details',{class:'more'},h('summary',{text:'Próximos días ('+prox.length+')'}),h('div',{class:'tareas',style:'margin-top:6px'},prox.map(x=>h('div',{class:'prox',style:'--bc:'+(x.marca?bc(x.marca):'var(--line)')},h('i',{class:'bdot'}),h('button',{type:'button',class:'tt ed',title:'Editar tarea',onclick:()=>openTarea(x)},x.texto),av(x.responsable,'pub','Responsable'),h('span',{class:'m',text:fechaCorta(x.desde)+(x.marca?' · '+x.marca:'')}))))),'prox',false):null,
     form);
   return fold('Mis pendientes de hoy',hoyT.length-done,true,body,late.length?h('span',{class:'pill p-tarde',text:late.length+' atrasados'}):null);
 }
+
+let editingTarea=null;
+function openTarea(x){
+  editingTarea=x||null;const t=today();
+  $('#tarea-title').textContent=x?'Editar tarea':'Nueva tarea';
+  $('#ta-texto').value=x?.texto||'';$('#ta-desde').value=x?.desde||t;$('#ta-hasta').value=x?.hasta||x?.desde||t;$('#ta-fija').checked=!!x?.fija;
+  $('#ta-marca').replaceChildren(h('option',{value:'',text:'Sin marca'}),...MARCAS.map(m=>h('option',{text:m})));$('#ta-marca').value=x?.marca||'';
+  fillPeople($('#ta-resp'),null,x?.responsable||'','Yo (sin asignar)');
+  const del=$('#tarea-del');del.hidden=!x||!canWrite;del.textContent='Eliminar';del.dataset.armed='';
+  $('#tarea-save').disabled=!canWrite;$('#dlg-tarea').showModal();
+}
+$('#form-tarea').addEventListener('submit',async ev=>{ev.preventDefault();
+  const fija=$('#ta-fija').checked;const desde=$('#ta-desde').value||today();let hasta=$('#ta-hasta').value||desde;
+  if(fija&&hasta<=desde)hasta='2027-12-31';if(hasta<desde)hasta=desde;
+  const d={texto:$('#ta-texto').value.trim(),responsable:$('#ta-resp').value,marca:$('#ta-marca').value,desde,hasta,fija,actualizado:new Date().toISOString()};
+  if(!d.texto)return;
+  try{if(editingTarea)await db.collection('tareas').doc(editingTarea.id).update(d);else await db.collection('tareas').add({...d,hechoDias:[],creado:d.actualizado});
+    $('#dlg-tarea').close();toast('Tarea guardada')}catch(e){writeFail(e)}});
+$('#tarea-del').addEventListener('click',async e=>{const b=e.currentTarget;if(!b.dataset.armed){b.dataset.armed='1';b.textContent='¿Seguro? Toca otra vez';return}
+  try{await db.collection('tareas').doc(editingTarea.id).delete();$('#dlg-tarea').close();toast('Tarea eliminada')}catch(err){writeFail(err)}});
 
 // ---------- SEMANA ----------
 function renderSemana(){
@@ -730,7 +780,9 @@ function renderEquipo(){
     grid.append(h('div',{class:'panel person'},
       h('div',{class:'person-h'},h('span',{class:'av'},h('i',{text:ini(m.nombre)}),m.nombre),h('span',{class:'spacer'}),h('button',{class:'btn small',disabled:!canWrite,onclick:()=>openMember(m)},'Editar')),
       h('div',{class:'rl note',text:m.rol}),
-      h('div',{class:'note',text:'Esta semana: '+mine.length+' publicaciones asignadas, '+pend+' pendientes'})));
+      h('div',{class:'note',text:'Esta semana: '+mine.length+' publicaciones asignadas, '+pend+' pendientes'}),
+      (()=>{const t=today();const tt=tareas.filter(x=>x.responsable===m.id&&(x.hasta||x.desde||'')>=t&&!hechaEn(x,t)).sort((p,q)=>(p.hasta||'').localeCompare(q.hasta||''));
+        return tt.length?h('div',{class:'tareas',style:'margin-top:8px'},h('div',{class:'sub-h',style:'color:var(--muted)',text:'Tareas'}),tt.map(x=>h('div',{class:'prox',style:'--bc:'+(x.marca?bc(x.marca):'var(--line)')},h('i',{class:'bdot'}),h('button',{type:'button',class:'tt ed',onclick:()=>openTarea(x)},x.texto),h('span',{class:'m',text:x.fija?'diaria':'hasta el '+fechaCorta(x.hasta||x.desde)})))):null})()));
   }
   v.append(grid);
   v.append(h('p',{class:'note',style:'margin-top:16px',text:'En cada publicación eliges quién diseña, quién hace la parte de desarrollo (si aplica) y quién publica. La pestaña Hoy le muestra a cada uno lo suyo.'}));
