@@ -331,7 +331,7 @@ a.btn{text-decoration:none;display:inline-block}
 </form></dialog>
 
 <dialog id="dlg-acc"><form id="form-acc" method="dialog">
-  <div class="dlg-h"><h2 id="acc-title">Acceso a red</h2><button type="button" class="btn small" data-close>Cerrar</button></div>
+  <div class="dlg-h"><h2 id="acc-title">Acceso</h2><button type="button" class="btn small" data-close>Cerrar</button></div>
   <div class="dlg-b">
     <div class="warn-box">Aquí nunca va la contraseña. La contraseña se guarda en Bitwarden y aquí solo pegas el enlace a esa ficha.</div>
     <div class="grid2">
@@ -891,6 +891,10 @@ function accRow(a){
       url?h('a',{class:'btn small',href:url,target:'_blank',rel:'noopener noreferrer'},'Abrir'):null,
       accAdmin?h('button',{class:'btn small',type:'button',onclick:()=>openAcc(a)},'Editar'):null));
 }
+const REDES_BASE=['Instagram','Facebook','TikTok','Gmail'];
+function accFalta(m,r){return h('div',{class:'acc',style:'--bc:'+bc(m)+';border-style:dashed'},blogo(m,20),
+  h('div',{class:'acc-t'},h('b',{text:r}),h('span',{text:'No estaba en el Sheets'})),
+  h('div',{class:'acc-a'},h('button',{class:'btn small',type:'button',onclick:()=>openAcc({marca:m,red:r,_nuevo:true})},'Agregar')))}
 function renderAdicional(){
   const v=$('#v-adicional');if(!v)return;v.replaceChildren();
   v.append(h('div',{class:'section-head'},h('h2',{text:'Adicional'})));
@@ -899,17 +903,20 @@ function renderAdicional(){
   else if(accError)body=h('p',{class:'note',text:'Esta sección todavía no está activada en la base de datos.'});
   else{
     const A=marcaFiltro==='todas'?accesos:accesos.filter(a=>a.marca===marcaFiltro);
-    const marcas=[...new Set(A.map(a=>a.marca))];
+    // Admin: cada marca del CRM muestra todas sus redes, también las que aún no están registradas.
+    const marcas=[...new Set([...(accAdmin?(marcaFiltro==='todas'?MARCAS:[marcaFiltro]):[]),...A.map(a=>a.marca)])];
+    const faltan=m=>accAdmin&&MARCAS.includes(m)?REDES_BASE.filter(r=>!A.some(a=>a.marca===m&&a.red===r)):[];
     body=h('div',{class:'stack'},
       h('div',{class:'row'},h('p',{class:'note',style:'margin:0;flex:1',text:accAdmin?'Solo ves aquí las cuentas, nunca las contraseñas. Cada botón abre la ficha en Bitwarden, y cada persona solo ve las cuentas que le asignes.':'Estas son las cuentas a las que tienes acceso. El botón abre la clave en Bitwarden.'}),
         accAdmin?h('button',{class:'btn primary',type:'button',onclick:()=>openAcc(null)},'Agregar acceso'):null),
-      A.length?marcas.map(m=>h('div',null,h('div',{class:'sub-h',text:m}),h('div',{class:'acc-list'},A.filter(a=>a.marca===m).map(accRow)))):h('p',{class:'empty',text:'No tienes accesos asignados todavía.'}));
+      marcaFiltro!=='todas'?h('p',{class:'note',style:'margin:0',text:'Estás viendo solo '+marcaFiltro+'. Para ver todas las marcas, cambia el selector de arriba a "Todas las marcas".'}):null,
+      marcas.length?marcas.map(m=>h('div',null,h('div',{class:'sub-h',style:'color:'+bc(m),text:m}),h('div',{class:'acc-list'},A.filter(a=>a.marca===m).map(accRow),faltan(m).map(r=>accFalta(m,r))))):h('p',{class:'empty',text:'No tienes accesos asignados todavía.'}));
   }
-  v.append(fold('Accesos a redes',accReady&&!accError?accesos.length:null,true,body));
+  v.append(fold('Accesos',accReady&&!accError?accesos.length:null,true,body));
 }
 let editingAcc=null;
-function openAcc(a){editingAcc=a||null;
-  $('#acc-title').textContent=a?'Editar acceso':'Nuevo acceso';
+function openAcc(a){editingAcc=a&&!a._nuevo?a:null;
+  $('#acc-title').textContent=editingAcc?'Editar acceso':'Nuevo acceso';
   $('#a-marcas').replaceChildren(...[...new Set([...MARCAS,...accesos.map(x=>x.marca)])].map(m=>h('option',{value:m})));
   $('#a-marca').value=a?.marca||(marcaFiltro!=='todas'?marcaFiltro:'');$('#a-red').value=a?.red||'';$('#a-cuenta').value=a?.cuenta||'';
   $('#a-url').value=a?.url||'';$('#a-bw').value=a?.bitwarden_url||'';$('#a-notas').value=a?.notas||'';
@@ -920,7 +927,7 @@ function openAcc(a){editingAcc=a||null;
     ...extra.map(c=>h('label',null,h('input',{type:'checkbox',value:c,checked:true}),c)));
   const sin=team.filter(t=>!t.correo).map(t=>t.nombre);
   $('#a-perm-note').textContent=sin.length?'Para poder elegir a '+sin.join(', ')+', ponles su correo en la pestaña Equipo.':'';
-  const d=$('#acc-del');d.hidden=!a;d.textContent='Eliminar';d.dataset.armed='';$('#dlg-acc').showModal()}
+  const d=$('#acc-del');d.hidden=!editingAcc;d.textContent='Eliminar';d.dataset.armed='';$('#dlg-acc').showModal()}
 $('#form-acc').addEventListener('submit',async ev=>{ev.preventDefault();const sb=window.__sb;
   const d={marca:$('#a-marca').value.trim(),red:$('#a-red').value.trim(),cuenta:$('#a-cuenta').value.trim(),url:$('#a-url').value.trim(),
     bitwarden_url:$('#a-bw').value.trim(),notas:$('#a-notas').value.trim(),
