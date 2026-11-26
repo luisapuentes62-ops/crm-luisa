@@ -1011,24 +1011,51 @@ async function importarCSV(file){
   }catch(e){toast('No pude leer ese archivo. Usa una hoja de Excel, Google Sheets o un CSV.');return}
   if(!t||!t.trim()){toast('El archivo está vacío');return}
   const m=await importarTexto(t);if(m)$('#imp-res').textContent=m+'. Borra el archivo: tiene las contraseñas sin cifrar.';return m}
+// Reconoce columnas por nombres parecidos; las que falten se llenan con "Sin empresa"/"Sin servicio".
+const SINON={marca:['empresa','marca','compania','negocio','cliente','contrasenas empresa'],red:['servicio','red','redes','plataforma','app','aplicacion','tipo','cuenta de'],
+  cuenta:['usuario','user','username','correo','email','e-mail','mail','login','cuenta'],clave:['contrasena','contrasenas','clave','claves','password','pass','pwd','contra'],
+  url:['enlace','link','url','sitio','web','pagina','pagina web'],notas:['notas','nota','observaciones','comentarios','detalle'],id:['id']};
+function columnas(head){const h=head.map(norm),used=new Set(),out={};
+  for(const k of ['id','clave','marca','red','cuenta','url','notas']){
+    let i=h.findIndex((x,j)=>!used.has(j)&&SINON[k].includes(x));
+    if(i<0&&k!=='id')i=h.findIndex((x,j)=>!used.has(j)&&x&&SINON[k].some(w=>x.startsWith(w)));
+    out[k]=i;if(i>=0)used.add(i)}
+  out.extra=h.map((x,j)=>j).filter(j=>!used.has(j));out.titulos=head;return out}
 async function importarTexto(texto){
   const sb=window.__sb;if(!accAdmin){toast('Solo un administrador puede importar');return}
-  const rows=parseCSV(texto);if(rows.length<2){toast('No encontré una tabla en ese archivo. Debe tener columnas Empresa, Servicio y Contraseña.');return}
-  const head=rows[0].map(norm);const ix=k=>head.indexOf(norm(k));
-  const iE=ix('Empresa'),iS=ix('Servicio'),iU=ix('Usuario'),iC=ix('Contraseña')>=0?ix('Contraseña'):ix('Contrasena'),iL=ix('Enlace'),iN=ix('Notas'),iId=ix('id');
-  if(iE<0||iS<0||iC<0){toast('Faltan columnas: incluye la fila de títulos (Empresa, Servicio, Contraseña)');return}
+  let rows=parseCSV(texto);if(!rows.length){toast('No encontré datos en ese archivo.');return}
+  let c=columnas(rows[0]);
+  const reconocidas=['marca','red','cuenta','clave','url','notas'].filter(k=>c[k]>=0).length;
+  if(reconocidas===0){c={id:-1,marca:0,red:1,cuenta:2,clave:3,url:4,notas:5,extra:[],titulos:[]}}  // sin títulos: orden de la plantilla
+  else rows=rows.slice(1);
+  if(!rows.length){toast('No hay filas para importar');return}
   let nuevas=0,act=0,claves=0,errores=0;
-  for(const r of rows.slice(1)){
-    const g=i=>i>=0?(r[i]??'').trim():'';
-    const d={marca:g(iE),red:g(iS),cuenta:g(iU)};if(iL>=0&&/^https?:\/\//i.test(g(iL)))d.url=g(iL);if(iN>=0&&g(iN))d.notas=g(iN);
-    const clave=iC>=0?(r[iC]??''):'';
-    if(!d.marca||!d.red){if(clave)errores++;continue}
-    let a=(iId>=0&&g(iId))?accesos.find(x=>x.id===g(iId)):null;
+  const esUrl=v=>/^https?:\/\//i.test(v)?v:(/^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(v)&&!v.includes('@')?'https://'+v:null);
+  for(const r of rows){
+    const g=i=>i>=0?String(r[i]??'').trim():'';
+    let cuenta=g(c.cuenta),url=g(c.url);
+    if(!cuenta&&url.includes('@')){cuenta=url;url=''}
+    const d={marca:g(c.marca)||'Sin empresa',red:g(c.red)||'Sin servicio',cuenta};
+    const u=esUrl(url);if(u)d.url=u;
+    // Columnas sin título junto a la contraseña: suelen ser otra opción de contraseña, van cifradas con ella.
+    const sinTit=c.extra.filter(j=>!String(c.titulos[j]??'').trim()).map(g).filter(Boolean);
+    const conTit=c.extra.filter(j=>String(c.titulos[j]??'').trim()).map(j=>g(j)?String(c.titulos[j]).trim()+': '+g(j):'').filter(Boolean);
+    const clave=[g(c.clave),...sinTit].filter(Boolean).join(' / ');
+    const notas=[g(c.notas),url&&!u?url:'',...conTit].filter(Boolean).join(' · ');
+    if(notas)d.notas=notas;
+    if(!g(c.marca)&&!g(c.red)&&!cuenta&&!clave)continue;
+    let a=(c.id>=0&&g(c.id))?accesos.find(x=>x.id===g(c.id)):null;
     if(!a)a=accesos.find(x=>norm(x.marca)===norm(d.marca)&&norm(x.red)===norm(d.red)&&norm(x.cuenta)===norm(d.cuenta));
+    if(!a&&cuenta)a=accesos.find(x=>norm(x.cuenta)===norm(cuenta)&&(d.marca==='Sin empresa'||norm(x.marca)===norm(d.marca)));
+    // Hojas viejas donde la primera columna trae el usuario: si coincide con una cuenta existente, solo se le pone la clave.
+    let soloClave=false;
+    if(!a&&!cuenta&&g(c.marca)){a=accesos.find(x=>x.cuenta&&norm(x.cuenta)===norm(g(c.marca)));soloClave=!!a}
     let id=a?.id;
-    if(a){const{error}=await sb.from('accesos').update({...d,actualizado:new Date().toISOString()}).eq('id',id);if(error){errores++;continue}act++}
-    else{const x=await sb.from('accesos').insert(d).select('id').single();if(x.error){errores++;continue}id=x.data.id;nuevas++}
-    if(clave.trim()){const{error}=await sb.rpc('guardar_clave',{p_id:id,p_clave:clave.trim()});if(error)errores++;else claves++}
+    if(a&&soloClave){act++}
+    else if(a){const upd={actualizado:new Date().toISOString()};for(const k of['marca','red','cuenta','url','notas'])if(d[k]&&!/^Sin (empresa|servicio)$/.test(d[k]))upd[k]=d[k];
+      const{error}=await sb.from('accesos').update(upd).eq('id',id);if(error){errores++;continue}act++}
+    else{const x=await sb.from('accesos').insert(d).select('id').single();if(x.error){errores++;continue}id=x.data.id;nuevas++;accesos.push({...d,id})}
+    if(clave){const{error}=await sb.rpc('guardar_clave',{p_id:id,p_clave:clave});if(error)errores++;else claves++}
   }
   shown.clear();await loadAccesos();
   const msg=`Importado: ${claves} contraseñas, ${nuevas} cuentas nuevas, ${act} actualizadas`+(errores?`, ${errores} con error`:'');
