@@ -336,6 +336,20 @@ a.btn{text-decoration:none;display:inline-block}
 </form></dialog>
 
 <input type="file" id="imp-file" accept=".csv,text/csv" hidden>
+<dialog id="dlg-imp"><form id="form-imp" method="dialog" autocomplete="off">
+  <div class="dlg-h"><h2>Importar accesos</h2><button type="button" class="btn small" data-close>Cerrar</button></div>
+  <div class="dlg-b">
+    <ol class="note" style="margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px">
+      <li>Toca <b>Copiar plantilla</b> y pégala en una hoja de Google Sheets o Excel (celda A1).</li>
+      <li>Llena la columna <b>Contraseña</b>. Puedes agregar filas nuevas; Empresa y Servicio son obligatorias. No cambies la columna id.</li>
+      <li>Selecciona toda la tabla con los títulos, cópiala y pégala aquí abajo.</li>
+    </ol>
+    <div class="row"><button type="button" class="btn" id="imp-copy">Copiar plantilla</button><button type="button" class="btn small" id="imp-filebtn">o subir un archivo CSV</button></div>
+    <label class="f">Pega aquí la tabla<textarea id="imp-text" rows="8" spellcheck="false" placeholder="Empresa	Servicio	Usuario	Contraseña	Enlace	Notas	id"></textarea></label>
+    <p class="note" id="imp-res" role="status" style="margin:0"></p>
+  </div>
+  <div class="dlg-f"><span class="spacer"></span><button type="button" class="btn" data-close>Cancelar</button><button type="submit" class="btn primary" id="imp-go">Importar</button></div>
+</form></dialog>
 <dialog id="dlg-acc"><form id="form-acc" method="dialog" autocomplete="off">
   <div class="dlg-h"><h2 id="acc-title">Acceso</h2><button type="button" class="btn small" data-close>Cerrar</button></div>
   <div class="dlg-b">
@@ -925,7 +939,7 @@ function logBox(){
   return d}
 function renderAccesos(){
   const v=$('#v-accesos');if(!v)return;v.replaceChildren();
-  v.append(h('div',{class:'section-head'},h('h2',{text:'Accesos'}),h('span',{class:'spacer'}),accAdmin?h('div',{class:'row'},h('button',{class:'btn',type:'button',onclick:descargarPlantilla},'Descargar plantilla'),h('button',{class:'btn',type:'button',onclick:()=>$('#imp-file').click()},'Importar CSV'),h('button',{class:'btn primary',type:'button',onclick:()=>openAcc(null)},'Agregar acceso')):null));
+  v.append(h('div',{class:'section-head'},h('h2',{text:'Accesos'}),h('span',{class:'spacer'}),accAdmin?h('div',{class:'row'},h('button',{class:'btn',type:'button',onclick:()=>{$('#imp-text').value='';$('#imp-res').textContent='';$('#dlg-imp').showModal()}},'Importar'),h('button',{class:'btn primary',type:'button',onclick:()=>openAcc(null)},'Agregar acceso')):null));
   if(!accReady){v.append(h('div',{class:'panel empty',text:'Cargando…'}));return}
   if(accError){v.append(h('div',{class:'panel'},h('p',{class:'note',text:'Esta sección todavía no está activada en la base de datos.'})));return}
   const A=marcaFiltro==='todas'?accesos:accesos.filter(a=>a.marca===marcaFiltro);
@@ -970,12 +984,6 @@ $('#acc-del').addEventListener('click',async e=>{const b=e.currentTarget;if(!b.d
 const COLS=['Empresa','Servicio','Usuario','Contraseña','Enlace','Notas','id'];
 const norm=x=>String(x||'').trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
 function csvEsc(v){v=String(v??'');return /[",;\n\r]/.test(v)?'"'+v.replace(/"/g,'""')+'"':v}
-function descargarPlantilla(){
-  const rows=[COLS,...accesos.map(a=>[a.marca,a.red,a.cuenta||'','',a.url||'',a.notas||'',a.id])];
-  const csv='﻿'+rows.map(r=>r.map(csvEsc).join(',')).join('\r\n');
-  const u=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));
-  const l=h('a',{href:u,download:'accesos-plantilla.csv'});document.body.append(l);l.click();l.remove();setTimeout(()=>URL.revokeObjectURL(u),1000);
-  toast('Plantilla descargada: llena la columna Contraseña')}
 function parseCSV(t){t=t.replace(/^﻿/,'');const first=t.split(/\r?\n/)[0]||'';
   const sep=(first.match(/;/g)||[]).length>(first.match(/,/g)||[]).length?';':(first.includes('\t')?'\t':',');
   const rows=[];let row=[],f='',q=false;
@@ -986,12 +994,13 @@ function parseCSV(t){t=t.replace(/^﻿/,'');const first=t.split(/\r?\n/)[0]||'';
     else f+=c}
   if(f!==''||row.length){row.push(f);rows.push(row)}
   return rows.filter(r=>r.some(x=>x.trim()!==''))}
-async function importarCSV(file){
+async function importarCSV(file){return importarTexto(await file.text())}
+async function importarTexto(texto){
   const sb=window.__sb;if(!accAdmin){toast('Solo un administrador puede importar');return}
-  const rows=parseCSV(await file.text());if(rows.length<2){toast('El archivo está vacío');return}
+  const rows=parseCSV(texto);if(rows.length<2){toast('No hay filas para importar');return}
   const head=rows[0].map(norm);const ix=k=>head.indexOf(norm(k));
   const iE=ix('Empresa'),iS=ix('Servicio'),iU=ix('Usuario'),iC=ix('Contraseña')>=0?ix('Contraseña'):ix('Contrasena'),iL=ix('Enlace'),iN=ix('Notas'),iId=ix('id');
-  if(iE<0||iS<0||iC<0){toast('Faltan columnas: Empresa, Servicio y Contraseña son obligatorias');return}
+  if(iE<0||iS<0||iC<0){toast('Faltan columnas: incluye la fila de títulos (Empresa, Servicio, Contraseña)');return}
   let nuevas=0,act=0,claves=0,errores=0;
   for(const r of rows.slice(1)){
     const g=i=>i>=0?(r[i]??'').trim():'';
@@ -1006,8 +1015,17 @@ async function importarCSV(file){
     if(clave.trim()){const{error}=await sb.rpc('guardar_clave',{p_id:id,p_clave:clave.trim()});if(error)errores++;else claves++}
   }
   shown.clear();await loadAccesos();
-  toast(`Importado: ${claves} contraseñas, ${nuevas} cuentas nuevas, ${act} actualizadas`+(errores?`, ${errores} con error`:''));
-  setTimeout(()=>toast('Borra el archivo CSV de tu computador: tiene las contraseñas sin cifrar'),2600)}
+  const msg=`Importado: ${claves} contraseñas, ${nuevas} cuentas nuevas, ${act} actualizadas`+(errores?`, ${errores} con error`:'');
+  toast(msg);return msg}
+$('#imp-copy').addEventListener('click',async()=>{
+  const tsv=[COLS,...accesos.map(a=>[a.marca,a.red,a.cuenta||'','',a.url||'',a.notas||'',a.id])].map(r=>r.map(x=>String(x).replace(/[\t\r\n]+/g,' ')).join('\t')).join('\n');
+  try{await navigator.clipboard.writeText(tsv);toast('Plantilla copiada: pégala en una hoja')}
+  catch(e){$('#imp-text').value=tsv;$('#imp-text').select();toast('Selecciona el texto de abajo y cópialo')}});
+$('#imp-filebtn').addEventListener('click',()=>$('#imp-file').click());
+$('#form-imp').addEventListener('submit',async ev=>{ev.preventDefault();const t=$('#imp-text').value;if(!t.trim())return;
+  const b=$('#imp-go');b.disabled=true;b.textContent='Importando…';
+  try{const m=await importarTexto(t);if(m){$('#imp-text').value='';$('#imp-res').textContent=m+'. Borra la hoja donde llenaste las contraseñas.'}}
+  finally{b.disabled=false;b.textContent='Importar'}});
 $('#imp-file').addEventListener('change',e=>{const f=e.target.files[0];e.target.value='';if(f)importarCSV(f)});
 document.addEventListener('visibilitychange',()=>{if(document.hidden&&shown.size){shown.clear();renderAccesos()}});
 setInterval(()=>{if(accAdmin&&!document.hidden&&!shown.size&&!$('#dlg-acc').open)loadAccesos()},60000);
