@@ -1,6 +1,6 @@
 -- "Accesos a redes" (pestaña Adicional del CRM).
 -- Aquí NUNCA se guardan contraseñas: solo qué cuenta es, de qué marca, y el enlace
--- a su ficha en Bitwarden, que es donde vive la contraseña.
+-- "Accesos" del CRM. Base: tabla de accesos con permisos por persona (ver también sql/claves.sql).
 -- Cada fila tiene la lista de correos que la pueden ver (permitidos).
 -- Los administradores (tabla crm_admins) ven todo y son los únicos que editan.
 
