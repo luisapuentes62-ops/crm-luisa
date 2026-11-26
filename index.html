@@ -335,7 +335,7 @@ a.btn{text-decoration:none;display:inline-block}
   </div>
 </form></dialog>
 
-<input type="file" id="imp-file" accept=".csv,text/csv" hidden>
+<input type="file" id="imp-file" hidden>
 <dialog id="dlg-imp"><form id="form-imp" method="dialog" autocomplete="off">
   <div class="dlg-h"><h2>Importar accesos</h2><button type="button" class="btn small" data-close>Cerrar</button></div>
   <div class="dlg-b">
@@ -344,7 +344,7 @@ a.btn{text-decoration:none;display:inline-block}
       <li>Llena la columna <b>Contraseña</b>. Puedes agregar filas nuevas; Empresa y Servicio son obligatorias. No cambies la columna id.</li>
       <li>Selecciona toda la tabla con los títulos, cópiala y pégala aquí abajo.</li>
     </ol>
-    <div class="row"><button type="button" class="btn" id="imp-copy">Copiar plantilla</button><button type="button" class="btn small" id="imp-filebtn">o subir un archivo CSV</button></div>
+    <div class="row"><button type="button" class="btn" id="imp-copy">Copiar plantilla</button><button type="button" class="btn small" id="imp-filebtn">o subir un archivo (Excel, CSV…)</button></div>
     <label class="f">Pega aquí la tabla<textarea id="imp-text" rows="8" spellcheck="false" placeholder="Empresa	Servicio	Usuario	Contraseña	Enlace	Notas	id"></textarea></label>
     <p class="note" id="imp-res" role="status" style="margin:0"></p>
   </div>
@@ -994,10 +994,26 @@ function parseCSV(t){t=t.replace(/^﻿/,'');const first=t.split(/\r?\n/)[0]||'';
     else f+=c}
   if(f!==''||row.length){row.push(f);rows.push(row)}
   return rows.filter(r=>r.some(x=>x.trim()!==''))}
-async function importarCSV(file){return importarTexto(await file.text())}
+let xlsxLib=null;
+function cargarXLSX(){return xlsxLib||(xlsxLib=new Promise((ok,ko)=>{if(window.XLSX)return ok(window.XLSX);
+  const sc=document.createElement('script');sc.src='https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
+  sc.onload=()=>ok(window.XLSX);sc.onerror=()=>{xlsxLib=null;ko(new Error('no cargó'))};document.head.append(sc)}))}
+// Acepta Excel (.xlsx/.xls), OpenDocument (.ods), Numbers y texto (CSV, TSV, TXT). Todo se lee en el navegador.
+async function importarCSV(file){
+  const ext=(file.name.split('.').pop()||'').toLowerCase();
+  const texto=['csv','tsv','txt','tab',''].includes(ext)||/^text\//.test(file.type);
+  let t;
+  try{
+    if(texto)t=await file.text();
+    else{const X=await cargarXLSX();const wb=X.read(await file.arrayBuffer(),{type:'array'});
+      const nombre=wb.SheetNames.find(n=>{const r=X.utils.sheet_to_json(wb.Sheets[n],{header:1,defval:''})[0]||[];return r.some(c=>norm(c)==='empresa')})||wb.SheetNames[0];
+      t=X.utils.sheet_to_csv(wb.Sheets[nombre],{FS:'\t',blankrows:false})}
+  }catch(e){toast('No pude leer ese archivo. Usa una hoja de Excel, Google Sheets o un CSV.');return}
+  if(!t||!t.trim()){toast('El archivo está vacío');return}
+  const m=await importarTexto(t);if(m)$('#imp-res').textContent=m+'. Borra el archivo: tiene las contraseñas sin cifrar.';return m}
 async function importarTexto(texto){
   const sb=window.__sb;if(!accAdmin){toast('Solo un administrador puede importar');return}
-  const rows=parseCSV(texto);if(rows.length<2){toast('No hay filas para importar');return}
+  const rows=parseCSV(texto);if(rows.length<2){toast('No encontré una tabla en ese archivo. Debe tener columnas Empresa, Servicio y Contraseña.');return}
   const head=rows[0].map(norm);const ix=k=>head.indexOf(norm(k));
   const iE=ix('Empresa'),iS=ix('Servicio'),iU=ix('Usuario'),iC=ix('Contraseña')>=0?ix('Contraseña'):ix('Contrasena'),iL=ix('Enlace'),iN=ix('Notas'),iId=ix('id');
   if(iE<0||iS<0||iC<0){toast('Faltan columnas: incluye la fila de títulos (Empresa, Servicio, Contraseña)');return}
