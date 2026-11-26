@@ -365,7 +365,7 @@ a.btn{text-decoration:none;display:inline-block}
     <label class="f">Notas<textarea id="a-notas" rows="2"></textarea></label>
   </div>
   <datalist id="a-marcas"></datalist>
-  <datalist id="a-redes"><option>Instagram</option><option>TikTok</option><option>Facebook</option><option>Gmail</option><option>Sitio web</option><option>Hosting</option><option>LinkedIn</option><option>YouTube</option></datalist>
+  <datalist id="a-redes"><option>WhatsApp</option><option>Gmail</option><option>Sitio web</option><option>Instagram</option><option>Facebook</option><option>TikTok</option><option>Hosting</option><option>LinkedIn</option><option>YouTube</option></datalist>
   <div class="dlg-f">
     <button type="button" class="btn danger" id="acc-del" hidden>Eliminar</button>
     <span class="spacer"></span>
@@ -937,26 +937,47 @@ function logBox(){
   const d=fold('Quién ha entrado',null,false,body,nuevos?h('span',{class:'pill p-tarde',text:nuevos+' nuevos'}):null);
   d.addEventListener('toggle',()=>{if(d.open&&accLog[0]){try{localStorage.setItem('crm-log-visto',accLog[0].creado)}catch(e){}marcarTab()}});
   return d}
+// Cada empresa tiene su desplegable con los mismos items fijos; lo demás va en "Otros".
+const ITEMS=[{k:'WhatsApp',m:['whatsapp','wpp','wa']},{k:'Gmail',m:['gmail','correo','email','mail']},{k:'Sitio web',m:['sitio web','sitio','web','pagina','pagina web','tienda']},
+  {k:'Instagram',m:['instagram','insta','ig']},{k:'Facebook',m:['facebook','fb','meta']},{k:'TikTok',m:['tiktok','tik tok']}];
+const itemDe=red=>{const n=norm(red);const it=ITEMS.find(i=>i.m.includes(n));return it?it.k:null};
+const EMPRESAS_BASE=[...MARCAS,'Restoupp','First Choice Institute','Futboltech'];
+function filaVacia(m,item){return h('div',{class:'acc',style:'--bc:'+bc(m)+';border-style:dashed'},
+  h('div',{class:'acc-t'},h('b',{text:item}),h('span',{text:'Sin registrar'})),
+  h('div',{class:'acc-a'},h('button',{class:'btn small',type:'button',onclick:()=>openAcc({marca:m,red:item,_nuevo:true})},'Agregar')))}
 function renderAccesos(){
   const v=$('#v-accesos');if(!v)return;v.replaceChildren();
   v.append(h('div',{class:'section-head'},h('h2',{text:'Accesos'}),h('span',{class:'spacer'}),accAdmin?h('div',{class:'row'},h('button',{class:'btn',type:'button',onclick:()=>{$('#imp-text').value='';$('#imp-res').textContent='';$('#dlg-imp').showModal()}},'Importar'),h('button',{class:'btn primary',type:'button',onclick:()=>openAcc(null)},'Agregar acceso')):null));
   if(!accReady){v.append(h('div',{class:'panel empty',text:'Cargando…'}));return}
   if(accError){v.append(h('div',{class:'panel'},h('p',{class:'note',text:'Esta sección todavía no está activada en la base de datos.'})));return}
   const A=marcaFiltro==='todas'?accesos:accesos.filter(a=>a.marca===marcaFiltro);
-  const marcas=[...new Set(A.map(a=>a.marca))].sort((x,y)=>x.localeCompare(y));
+  const base=accAdmin?(marcaFiltro==='todas'?EMPRESAS_BASE:[marcaFiltro]):[];
+  const empresas=[...new Set([...base,...A.map(a=>a.marca)])].sort((x,y)=>x.localeCompare(y,'es'));
   const st=h('div',{class:'stack'});
   if(accAdmin)st.append(logBox());
-  st.append(h('p',{class:'note',style:'margin:0',text:'Las contraseñas están cifradas. Toca Ver o Copiar para usarlas; cada vez queda registrado quién la vio.'+(marcaFiltro!=='todas'?' Estás viendo solo '+marcaFiltro+'.':'')}));
-  st.append(marcas.length?h('div',{class:'stack'},marcas.map(m=>h('div',{class:'panel'},h('h3',{style:'display:flex;align-items:center;gap:8px;margin-bottom:10px'},blogo(m,20),m),h('div',{class:'acc-list'},A.filter(a=>a.marca===m).map(accRow))))):h('div',{class:'panel empty',text:'No tienes accesos asignados todavía.'}));
+  st.append(h('p',{class:'note',style:'margin:0',text:'Toca cada empresa para ver sus accesos. Las contraseñas están cifradas: toca Ver o Copiar para usarlas, y cada vez queda registrado quién la vio.'+(marcaFiltro!=='todas'?' Estás viendo solo '+marcaFiltro+'.':'')}));
+  if(!empresas.length){st.append(h('div',{class:'panel empty',text:'No tienes accesos asignados todavía.'}));v.append(st);return}
+  for(const m of empresas){
+    const mine=A.filter(a=>a.marca===m);
+    const filas=[];
+    for(const it of ITEMS){const xs=mine.filter(a=>itemDe(a.red)===it.k);
+      if(xs.length)filas.push(...xs.map(accRow));else if(accAdmin)filas.push(filaVacia(m,it.k))}
+    const otros=mine.filter(a=>!itemDe(a.red));
+    if(otros.length)filas.push(h('div',{class:'sub-h',style:'color:var(--muted)',text:'Otros'}),...otros.map(accRow));
+    const conClave=mine.filter(a=>a.clave_id).length;
+    const d=fold(m,mine.length,false,h('div',{class:'acc-list'},filas),h('span',{class:'note',style:'font-size:12px',text:mine.length?(conClave+' de '+mine.length+' con contraseña'):'Sin accesos'}));
+    const sum=d.querySelector('summary');const t=sum.querySelector('.fold-t');t.before(blogo(m,22));
+    d.style.borderLeft='4px solid '+bc(m);
+    st.append(d)}
   v.append(st);
 }
 let editingAcc=null;
-function openAcc(a){editingAcc=a||null;
-  $('#acc-title').textContent=a?'Editar acceso':'Nuevo acceso';
+function openAcc(a){editingAcc=a&&!a._nuevo?a:null;
+  $('#acc-title').textContent=editingAcc?'Editar acceso':'Nuevo acceso';
   $('#a-marcas').replaceChildren(...[...new Set([...MARCAS,...accesos.map(x=>x.marca)])].map(m=>h('option',{value:m})));
   $('#a-marca').value=a?.marca||(marcaFiltro!=='todas'?marcaFiltro:'');$('#a-red').value=a?.red||'';$('#a-cuenta').value=a?.cuenta||'';
   $('#a-url').value=a?.url||'';$('#a-notas').value=a?.notas||'';$('#a-clave').value='';
-  $('#a-clave').placeholder=a?.clave_id?'Déjala vacía para no cambiarla':'';
+  $('#a-clave').placeholder=editingAcc?.clave_id?'Déjala vacía para no cambiarla':'';
   const sel=new Set((a?.permitidos||[]).map(x=>x.toLowerCase()));
   const conCorreo=team.filter(t=>t.correo).sort((x,y)=>x.nombre.localeCompare(y.nombre));
   const extra=[...sel].filter(c=>!conCorreo.some(t=>t.correo.toLowerCase()===c));
@@ -964,7 +985,7 @@ function openAcc(a){editingAcc=a||null;
     ...extra.map(c=>h('label',null,h('input',{type:'checkbox',value:c,checked:true}),c)));
   const sin=team.filter(t=>!t.correo).map(t=>t.nombre);
   $('#a-perm-note').textContent=sin.length?'Para poder elegir a '+sin.join(', ')+', ponles su correo en la pestaña Equipo.':'';
-  const d=$('#acc-del');d.hidden=!a;d.textContent='Eliminar';d.dataset.armed='';$('#dlg-acc').showModal()}
+  const d=$('#acc-del');d.hidden=!editingAcc;d.textContent='Eliminar';d.dataset.armed='';$('#dlg-acc').showModal()}
 $('#form-acc').addEventListener('submit',async ev=>{ev.preventDefault();const sb=window.__sb;
   const d={marca:$('#a-marca').value.trim(),red:$('#a-red').value.trim(),cuenta:$('#a-cuenta').value.trim(),url:$('#a-url').value.trim(),
     notas:$('#a-notas').value.trim(),permitidos:[...$('#a-permitidos').querySelectorAll('input:checked')].map(i=>i.value)};
