@@ -209,6 +209,11 @@ select.mini{width:auto;font-size:12px;padding:3px 6px}
 .acc .acc-t span{font-size:12px;color:var(--muted);overflow-wrap:anywhere}
 .acc .acc-a{display:flex;gap:6px;flex-wrap:wrap}
 a.btn{text-decoration:none;display:inline-block}
+.pw{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;background:var(--soft);border-radius:6px;padding:2px 8px;overflow-wrap:anywhere}
+.log{display:flex;flex-direction:column;gap:4px;font-size:13px}
+.log div{display:flex;gap:8px;flex-wrap:wrap}
+.log time{color:var(--muted);font-size:12px;min-width:120px}
+.log .nuevo{font-weight:600}
 .warn-box{background:var(--warn-bg);color:var(--warn);border-radius:8px;padding:10px 12px;font-size:13px}
 .chk{display:flex;flex-wrap:wrap;gap:6px 14px}
 .chk label{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--ink)}
@@ -224,7 +229,7 @@ a.btn{text-decoration:none;display:inline-block}
     <button role="tab" data-tab="campanas" aria-selected="false">Campañas</button>
     <button role="tab" data-tab="analisis" aria-selected="false">Análisis</button>
     <button role="tab" data-tab="equipo" aria-selected="false">Equipo</button>
-    <button role="tab" data-tab="adicional" aria-selected="false">Adicional</button>
+    <button role="tab" data-tab="accesos" aria-selected="false">Accesos</button>
   </nav>
   <div class="spacer"></div>
   <select id="marca-global" aria-label="Marca" style="width:auto"></select>
@@ -238,7 +243,7 @@ a.btn{text-decoration:none;display:inline-block}
   <section id="v-campanas" hidden></section>
   <section id="v-analisis" hidden></section>
   <section id="v-equipo" hidden></section>
-  <section id="v-adicional" hidden></section>
+  <section id="v-accesos" hidden></section>
 </main>
 <div id="tip" role="tooltip" hidden></div>
 
@@ -330,23 +335,22 @@ a.btn{text-decoration:none;display:inline-block}
   </div>
 </form></dialog>
 
-<dialog id="dlg-acc"><form id="form-acc" method="dialog">
+<dialog id="dlg-acc"><form id="form-acc" method="dialog" autocomplete="off">
   <div class="dlg-h"><h2 id="acc-title">Acceso</h2><button type="button" class="btn small" data-close>Cerrar</button></div>
   <div class="dlg-b">
-    <div class="warn-box">Aquí nunca va la contraseña. La contraseña se guarda en Bitwarden y aquí solo pegas el enlace a esa ficha.</div>
     <div class="grid2">
-      <label class="f">Marca<input id="a-marca" list="a-marcas" required></label>
-      <label class="f">Red o servicio<input id="a-red" list="a-redes" required placeholder="Instagram, TikTok, Gmail…"></label>
-      <label class="f">Usuario o correo de ingreso<input id="a-cuenta" autocomplete="off"></label>
-      <label class="f">Enlace de la red o sitio<input id="a-url" type="url" placeholder="https://"></label>
+      <label class="f">Empresa<input id="a-marca" list="a-marcas" required></label>
+      <label class="f">Servicio<input id="a-red" list="a-redes" required placeholder="Instagram, Gmail, hosting…"></label>
+      <label class="f">Usuario o correo<input id="a-cuenta" autocomplete="off"></label>
+      <label class="f">Contraseña<input id="a-clave" type="password" autocomplete="new-password" placeholder=""></label>
+      <label class="f">Enlace (opcional)<input id="a-url" type="url" placeholder="https://"></label>
     </div>
-    <label class="f">Enlace a la ficha en Bitwarden<input id="a-bw" type="url" placeholder="https://vault.bitwarden.com/#/vault?itemId=…"></label>
     <div class="f"><span style="font-size:12px;color:var(--muted);font-weight:500">Quién puede verlo (además de los administradores)</span><div class="chk" id="a-permitidos"></div>
       <p class="note" id="a-perm-note" style="margin:4px 0 0"></p></div>
-    <label class="f">Notas (sin contraseñas)<textarea id="a-notas" rows="2"></textarea></label>
+    <label class="f">Notas<textarea id="a-notas" rows="2"></textarea></label>
   </div>
   <datalist id="a-marcas"></datalist>
-  <datalist id="a-redes"><option>Instagram</option><option>TikTok</option><option>Facebook</option><option>Gmail</option><option>Sitio web</option><option>LinkedIn</option><option>YouTube</option></datalist>
+  <datalist id="a-redes"><option>Instagram</option><option>TikTok</option><option>Facebook</option><option>Gmail</option><option>Sitio web</option><option>Hosting</option><option>LinkedIn</option><option>YouTube</option></datalist>
   <div class="dlg-f">
     <button type="button" class="btn danger" id="acc-del" hidden>Eliminar</button>
     <span class="spacer"></span>
@@ -874,52 +878,70 @@ $('#form-post').addEventListener('submit',async ev=>{
 $('#post-del').addEventListener('click',async e=>{const b=e.currentTarget;if(!b.dataset.armed){b.dataset.armed='1';b.textContent='¿Seguro? Toca otra vez';return}
   try{await db.collection('contenido').doc(editingPost.id).delete();$('#dlg-post').close();toast('Publicación eliminada')}catch(err){writeFail(err)}});
 
-// ---------- ADICIONAL: ACCESOS A REDES ----------
-// Las contraseñas viven en Bitwarden. Aquí solo hay qué cuenta es y el enlace a su ficha.
-// Tabla "accesos" con RLS: cada persona solo recibe las filas donde está su correo.
-let accesos=[], accReady=false, accError=null, accAdmin=false;
-async function loadAccesos(){const sb=window.__sb;if(!sb){accReady=true;renderAdicional();return}
-  const[{data,error},adm]=await Promise.all([sb.from('accesos').select('*').order('marca').order('red'),sb.rpc('soy_admin_crm')]);
-  accError=error||null;accesos=data||[];accAdmin=!adm.error&&adm.data===true;accReady=true;renderAdicional()}
+// ---------- ACCESOS ----------
+// Usuario y contraseña de cada servicio. La contraseña está cifrada en Supabase Vault y solo
+// se pide con ver_clave() al tocar Ver o Copiar; cada vez queda registrado quién la vio.
+let accesos=[], accReady=false, accError=null, accAdmin=false, accLog=[];
+const shown=new Map();
+async function loadAccesos(){const sb=window.__sb;if(!sb){accReady=true;renderAccesos();return}
+  const[{data,error},adm]=await Promise.all([sb.from('accesos').select('id,marca,red,cuenta,url,permitidos,notas,clave_id,actualizado').order('marca').order('red'),sb.rpc('soy_admin_crm')]);
+  accError=error||null;accesos=data||[];accAdmin=!adm.error&&adm.data===true;
+  if(accAdmin){const l=await sb.from('accesos_log').select('acceso_id,email,accion,creado').order('creado',{ascending:false}).limit(50);accLog=l.data||[]}
+  try{const u=await sb.auth.getUser();window.__yo=(u.data?.user?.email||'').toLowerCase()}catch(e){}
+  accReady=true;renderAccesos();marcarTab()}
+function marcarTab(){let visto='';try{visto=localStorage.getItem('crm-log-visto')||''}catch(e){}
+  const n=accLog.filter(l=>l.accion==='ver'&&l.creado>visto&&l.email!==window.__yo).length;
+  const b=document.querySelector('nav.tabs [data-tab=accesos]');if(b)b.textContent=n?'Accesos ('+n+')':'Accesos'}
 const safeUrl=u=>/^https?:\/\//i.test(u||'')?u:null;
+const quien=e=>{const t=team.find(x=>(x.correo||'').toLowerCase()===(e||'').toLowerCase());return t?t.nombre:e};
+async function pedirClave(a){const{data,error}=await window.__sb.rpc('ver_clave',{p_id:a.id});if(error){toast('No tienes permiso para ver esta contraseña');return null}return data||''}
+async function copiar(txt,msg){try{await navigator.clipboard.writeText(txt);toast(msg)}catch(e){toast('No se pudo copiar')}}
 function accRow(a){
-  const bw=safeUrl(a.bitwarden_url),url=safeUrl(a.url);
+  const pw=h('span',{class:'pw',text:shown.has(a.id)?shown.get(a.id):(a.clave_id?'••••••••':'Sin contraseña')});
+  const ver=h('button',{class:'btn small',type:'button',disabled:!a.clave_id},shown.has(a.id)?'Ocultar':'Ver');
+  ver.onclick=async()=>{if(shown.has(a.id)){shown.delete(a.id);renderAccesos();return}
+    const v=await pedirClave(a);if(v==null)return;shown.set(a.id,v);renderAccesos();
+    setTimeout(()=>{if(shown.delete(a.id))renderAccesos()},30000)};
+  const cop=h('button',{class:'btn small',type:'button',disabled:!a.clave_id},'Copiar clave');
+  cop.onclick=async()=>{const v=shown.get(a.id)??await pedirClave(a);if(v!=null)copiar(v,'Contraseña copiada')};
+  const url=safeUrl(a.url);
   return h('div',{class:'acc',style:'--bc:'+bc(a.marca)},blogo(a.marca,20),
-    h('div',{class:'acc-t'},h('b',{text:a.red}),h('span',{text:[a.cuenta,a.notas].filter(Boolean).join(' · ')||'—'})),
-    h('div',{class:'acc-a'},
-      bw?h('a',{class:'btn small primary',href:bw,target:'_blank',rel:'noopener noreferrer'},'Ver clave en Bitwarden'):h('span',{class:'pill p-tarde',text:'Falta enlace de Bitwarden'}),
-      url?h('a',{class:'btn small',href:url,target:'_blank',rel:'noopener noreferrer'},'Abrir'):null,
+    h('div',{class:'acc-t'},h('b',{text:a.red}),
+      h('span',null,a.cuenta?h('button',{type:'button',class:'tt ed',style:'background:none;border:0;padding:0;color:inherit;font:inherit;cursor:pointer;text-decoration:underline dotted',title:'Copiar usuario',onclick:()=>copiar(a.cuenta,'Usuario copiado')},a.cuenta):'Sin usuario'),
+      a.notas?h('span',{text:a.notas}):null),
+    pw,
+    h('div',{class:'acc-a'},ver,cop,url?h('a',{class:'btn small',href:url,target:'_blank',rel:'noopener noreferrer'},'Abrir'):null,
       accAdmin?h('button',{class:'btn small',type:'button',onclick:()=>openAcc(a)},'Editar'):null));
 }
-const REDES_BASE=['Instagram','Facebook','TikTok','Gmail'];
-function accFalta(m,r){return h('div',{class:'acc',style:'--bc:'+bc(m)+';border-style:dashed'},blogo(m,20),
-  h('div',{class:'acc-t'},h('b',{text:r}),h('span',{text:'No estaba en el Sheets'})),
-  h('div',{class:'acc-a'},h('button',{class:'btn small',type:'button',onclick:()=>openAcc({marca:m,red:r,_nuevo:true})},'Agregar')))}
-function renderAdicional(){
-  const v=$('#v-adicional');if(!v)return;v.replaceChildren();
-  v.append(h('div',{class:'section-head'},h('h2',{text:'Adicional'})));
-  let body;
-  if(!accReady)body=h('p',{class:'empty',text:'Cargando…'});
-  else if(accError)body=h('p',{class:'note',text:'Esta sección todavía no está activada en la base de datos.'});
-  else{
-    const A=marcaFiltro==='todas'?accesos:accesos.filter(a=>a.marca===marcaFiltro);
-    // Admin: cada marca del CRM muestra todas sus redes, también las que aún no están registradas.
-    const marcas=[...new Set([...(accAdmin?(marcaFiltro==='todas'?MARCAS:[marcaFiltro]):[]),...A.map(a=>a.marca)])];
-    const faltan=m=>accAdmin&&MARCAS.includes(m)?REDES_BASE.filter(r=>!A.some(a=>a.marca===m&&a.red===r)):[];
-    body=h('div',{class:'stack'},
-      h('div',{class:'row'},h('p',{class:'note',style:'margin:0;flex:1',text:accAdmin?'Solo ves aquí las cuentas, nunca las contraseñas. Cada botón abre la ficha en Bitwarden, y cada persona solo ve las cuentas que le asignes.':'Estas son las cuentas a las que tienes acceso. El botón abre la clave en Bitwarden.'}),
-        accAdmin?h('button',{class:'btn primary',type:'button',onclick:()=>openAcc(null)},'Agregar acceso'):null),
-      marcaFiltro!=='todas'?h('p',{class:'note',style:'margin:0',text:'Estás viendo solo '+marcaFiltro+'. Para ver todas las marcas, cambia el selector de arriba a "Todas las marcas".'}):null,
-      marcas.length?marcas.map(m=>h('div',null,h('div',{class:'sub-h',style:'color:'+bc(m),text:m}),h('div',{class:'acc-list'},A.filter(a=>a.marca===m).map(accRow),faltan(m).map(r=>accFalta(m,r))))):h('p',{class:'empty',text:'No tienes accesos asignados todavía.'}));
-  }
-  v.append(fold('Accesos',accReady&&!accError?accesos.length:null,true,body));
+function logBox(){
+  let visto='';try{visto=localStorage.getItem('crm-log-visto')||''}catch(e){}
+  const nuevos=accLog.filter(l=>l.accion==='ver'&&l.creado>visto&&!(window.__yo&&l.email===window.__yo)).length;
+  const fmt=d=>new Date(d).toLocaleString('es-CO',{day:'numeric',month:'short',hour:'numeric',minute:'2-digit'});
+  const body=accLog.length?h('div',{class:'log'},accLog.map(l=>{const a=accesos.find(x=>x.id===l.acceso_id);
+      return h('div',{class:l.creado>visto?'nuevo':null},h('time',{text:fmt(l.creado)}),h('span',{text:quien(l.email)+(l.accion==='ver'?' vio la contraseña de ':' cambió la contraseña de ')+(a?a.red+' · '+a.marca:'un acceso borrado')}))})):h('p',{class:'empty',text:'Nadie ha visto contraseñas todavía.'});
+  const d=fold('Quién ha entrado',null,false,body,nuevos?h('span',{class:'pill p-tarde',text:nuevos+' nuevos'}):null);
+  d.addEventListener('toggle',()=>{if(d.open&&accLog[0]){try{localStorage.setItem('crm-log-visto',accLog[0].creado)}catch(e){}marcarTab()}});
+  return d}
+function renderAccesos(){
+  const v=$('#v-accesos');if(!v)return;v.replaceChildren();
+  v.append(h('div',{class:'section-head'},h('h2',{text:'Accesos'}),h('span',{class:'spacer'}),accAdmin?h('button',{class:'btn primary',type:'button',onclick:()=>openAcc(null)},'Agregar acceso'):null));
+  if(!accReady){v.append(h('div',{class:'panel empty',text:'Cargando…'}));return}
+  if(accError){v.append(h('div',{class:'panel'},h('p',{class:'note',text:'Esta sección todavía no está activada en la base de datos.'})));return}
+  const A=marcaFiltro==='todas'?accesos:accesos.filter(a=>a.marca===marcaFiltro);
+  const marcas=[...new Set(A.map(a=>a.marca))].sort((x,y)=>x.localeCompare(y));
+  const st=h('div',{class:'stack'});
+  if(accAdmin)st.append(logBox());
+  st.append(h('p',{class:'note',style:'margin:0',text:'Las contraseñas están cifradas. Toca Ver o Copiar para usarlas; cada vez queda registrado quién la vio.'+(marcaFiltro!=='todas'?' Estás viendo solo '+marcaFiltro+'.':'')}));
+  st.append(marcas.length?h('div',{class:'stack'},marcas.map(m=>h('div',{class:'panel'},h('h3',{style:'display:flex;align-items:center;gap:8px;margin-bottom:10px'},blogo(m,20),m),h('div',{class:'acc-list'},A.filter(a=>a.marca===m).map(accRow))))):h('div',{class:'panel empty',text:'No tienes accesos asignados todavía.'}));
+  v.append(st);
 }
 let editingAcc=null;
-function openAcc(a){editingAcc=a&&!a._nuevo?a:null;
-  $('#acc-title').textContent=editingAcc?'Editar acceso':'Nuevo acceso';
+function openAcc(a){editingAcc=a||null;
+  $('#acc-title').textContent=a?'Editar acceso':'Nuevo acceso';
   $('#a-marcas').replaceChildren(...[...new Set([...MARCAS,...accesos.map(x=>x.marca)])].map(m=>h('option',{value:m})));
   $('#a-marca').value=a?.marca||(marcaFiltro!=='todas'?marcaFiltro:'');$('#a-red').value=a?.red||'';$('#a-cuenta').value=a?.cuenta||'';
-  $('#a-url').value=a?.url||'';$('#a-bw').value=a?.bitwarden_url||'';$('#a-notas').value=a?.notas||'';
+  $('#a-url').value=a?.url||'';$('#a-notas').value=a?.notas||'';$('#a-clave').value='';
+  $('#a-clave').placeholder=a?.clave_id?'Déjala vacía para no cambiarla':'';
   const sel=new Set((a?.permitidos||[]).map(x=>x.toLowerCase()));
   const conCorreo=team.filter(t=>t.correo).sort((x,y)=>x.nombre.localeCompare(y.nombre));
   const extra=[...sel].filter(c=>!conCorreo.some(t=>t.correo.toLowerCase()===c));
@@ -927,24 +949,29 @@ function openAcc(a){editingAcc=a&&!a._nuevo?a:null;
     ...extra.map(c=>h('label',null,h('input',{type:'checkbox',value:c,checked:true}),c)));
   const sin=team.filter(t=>!t.correo).map(t=>t.nombre);
   $('#a-perm-note').textContent=sin.length?'Para poder elegir a '+sin.join(', ')+', ponles su correo en la pestaña Equipo.':'';
-  const d=$('#acc-del');d.hidden=!editingAcc;d.textContent='Eliminar';d.dataset.armed='';$('#dlg-acc').showModal()}
+  const d=$('#acc-del');d.hidden=!a;d.textContent='Eliminar';d.dataset.armed='';$('#dlg-acc').showModal()}
 $('#form-acc').addEventListener('submit',async ev=>{ev.preventDefault();const sb=window.__sb;
   const d={marca:$('#a-marca').value.trim(),red:$('#a-red').value.trim(),cuenta:$('#a-cuenta').value.trim(),url:$('#a-url').value.trim(),
-    bitwarden_url:$('#a-bw').value.trim(),notas:$('#a-notas').value.trim(),
-    permitidos:[...$('#a-permitidos').querySelectorAll('input:checked')].map(i=>i.value),actualizado:new Date().toISOString()};
+    notas:$('#a-notas').value.trim(),permitidos:[...$('#a-permitidos').querySelectorAll('input:checked')].map(i=>i.value)};
+  const clave=$('#a-clave').value;
   if(!d.marca||!d.red)return;
-  if(d.bitwarden_url&&!/^https:\/\//i.test(d.bitwarden_url)){toast('El enlace de Bitwarden debe empezar por https://');return}
-  const q=editingAcc?sb.from('accesos').update(d).eq('id',editingAcc.id):sb.from('accesos').insert(d);
-  const{error}=await q;if(error){toast(/policy|permission/i.test(error.message)?'Solo un administrador puede editar accesos':'No se guardó. Intenta de nuevo.');return}
-  $('#dlg-acc').close();toast('Acceso guardado');loadAccesos()});
+  let id=editingAcc?.id,error;
+  if(editingAcc)({error}=await sb.from('accesos').update({...d,actualizado:new Date().toISOString()}).eq('id',id));
+  else{const r=await sb.from('accesos').insert(d).select('id').single();error=r.error;id=r.data?.id}
+  if(!error&&clave)({error}=await sb.rpc('guardar_clave',{p_id:id,p_clave:clave}));
+  $('#a-clave').value='';
+  if(error){toast(/permis|policy/i.test(error.message)?'Solo un administrador puede editar accesos':'No se guardó. Intenta de nuevo.');return}
+  shown.delete(id);$('#dlg-acc').close();toast('Acceso guardado');loadAccesos()});
 $('#acc-del').addEventListener('click',async e=>{const b=e.currentTarget;if(!b.dataset.armed){b.dataset.armed='1';b.textContent='¿Seguro? Toca otra vez';return}
   const{error}=await window.__sb.from('accesos').delete().eq('id',editingAcc.id);if(error){toast('No se pudo eliminar');return}
   $('#dlg-acc').close();toast('Acceso eliminado');loadAccesos()});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&shown.size){shown.clear();renderAccesos()}});
+setInterval(()=>{if(accAdmin&&!document.hidden&&!shown.size&&!$('#dlg-acc').open)loadAccesos()},60000);
 
 // ---------- shell ----------
-function render(){renderHoy();renderSemana();renderCampanas();renderAnalisis();renderEquipo();renderAdicional()}
+function render(){renderHoy();renderSemana();renderCampanas();renderAnalisis();renderEquipo();renderAccesos()}
 function showTab(t){document.querySelectorAll('nav.tabs button').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===t)));
-  for(const k of['hoy','semana','campanas','analisis','equipo','adicional'])$('#v-'+k).hidden=k!==t;try{localStorage.setItem('crm-tab2',t)}catch(e){}}
+  for(const k of['hoy','semana','campanas','analisis','equipo','accesos'])$('#v-'+k).hidden=k!==t;try{localStorage.setItem('crm-tab2',t)}catch(e){}}
 document.querySelectorAll('nav.tabs button').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
 document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>b.closest('dialog').close()));
 document.querySelectorAll('.sel-marca').forEach(s=>s.replaceChildren(...MARCAS.map(m=>h('option',{text:m}))));
