@@ -101,9 +101,35 @@ async function instagramUnificado(code: string, st: { marca: string; email: stri
         for (const a of r2.data || []) agregar(String(a.id), a.username);
       }
     }
-    // Respaldo 3: cuentas asignadas al usuario del sistema
+    // Respaldo 3: activos asignados al usuario del sistema (token SYSTEM_USER sin target_ids)
     const me = await json(await fetch(`${FB}/me?fields=id,name&access_token=${at}`));
     console.log("me", JSON.stringify(me).slice(0, 200), "paginas", JSON.stringify(pg).slice(0, 300));
+    const pruebas = [
+      "me/instagram_accounts?fields=id,username",
+      "me/assigned_pages?fields=instagram_business_account{id,username}",
+      "me/businesses?fields=id,name",
+    ];
+    for (const q of pruebas) {
+      const x = await json(await fetch(`${FB}/${q}&access_token=${at}`));
+      console.log("prueba", q, JSON.stringify(x).slice(0, 400));
+      for (const a of x.data || []) {
+        if (a.username) agregar(String(a.id), a.username);
+        if (a.instagram_business_account) agregar(a.instagram_business_account.id, a.instagram_business_account.username);
+        if (q.startsWith("me/businesses")) {
+          for (const ed of ["owned_instagram_accounts", "instagram_accounts", "client_instagram_assets"]) {
+            const r3 = await json(await fetch(`${FB}/${a.id}/${ed}?fields=id,username&access_token=${at}`));
+            for (const b of r3.data || []) agregar(String(b.id), b.username);
+          }
+        }
+      }
+    }
+    // Respaldo 4: cuentas conocidas de las marcas (redes_config "ig_ids"): la que el permiso deje leer es la elegida
+    if (!cuentas.length) {
+      for (const id of ((await config("ig_ids")) || "").split(/[\s,]+/).filter(Boolean)) {
+        const u = await json(await fetch(`${FB}/${id}?fields=id,username&access_token=${at}`));
+        if (u.username) agregar(String(u.id || id), u.username);
+      }
+    }
   }
   if (!cuentas.length) throw new Error("No se eligió ninguna cuenta de Instagram profesional. Vuelve a conectar y marca la cuenta de la marca.");
   // Si autorizó varias, se usa la que más se parece al nombre de la marca
