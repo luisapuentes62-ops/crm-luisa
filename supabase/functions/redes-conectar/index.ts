@@ -39,7 +39,7 @@ function volverA(url: string | null | undefined, ok: boolean, msg: string) {
 
 async function guardarCuenta(c: {
   red: string; marca: string; cuenta: string; ext_id: string; email: string | null;
-  token: string; expira: Date; refresh?: string; refresh_expira?: Date;
+  token: string; expira: Date | null; refresh?: string; refresh_expira?: Date;
 }) {
   // Una cuenta por red y marca: si ya existía, se reemplaza
   const { data: prev } = await sb.from("redes_cuentas").select("id").eq("red", c.red).eq("marca", c.marca).maybeSingle();
@@ -48,17 +48,56 @@ async function guardarCuenta(c: {
   const refresh_id = c.refresh ? await guardarSecreto("redes:ref:" + id, c.refresh) : null;
   const row = {
     id, red: c.red, marca: c.marca, cuenta: c.cuenta, ext_id: c.ext_id, token_id, refresh_id,
-    expira: c.expira.toISOString(), refresh_expira: c.refresh_expira?.toISOString() ?? null,
+    expira: c.expira ? c.expira.toISOString() : null, refresh_expira: c.refresh_expira?.toISOString() ?? null,
     conectado_por: c.email, actualizado: new Date().toISOString(),
   };
   const { error } = await sb.from("redes_cuentas").upsert(row);
   if (error) throw error;
 }
 
+// Inicio de sesión unificado de Meta (apps nuevas): Facebook Login para empresas con una configuración
+// que entrega un token de usuario del sistema (no vence) con acceso a las cuentas de Instagram elegidas.
+const FB = "https://graph.facebook.com/v22.0";
+const norm = (s: string) => s.normalize("NFD").replace(/[^a-z0-9]/gi, "").toLowerCase();
+async function instagramUnificado(code: string, st: { marca: string; email: string | null }, appId: string, secret: string) {
+  const r = await json(await fetch(`${FB}/oauth/access_token?` + new URLSearchParams({
+    client_id: appId, client_secret: secret, redirect_uri: BASE + "instagram", code,
+  })));
+  if (!r.access_token) throw new Error("Meta no entregó el permiso: " + (r.error?.message || JSON.stringify(r).slice(0, 200)));
+  const tok = r.access_token as string;
+  // Qué cuentas de Instagram autorizó la persona
+  const dbg = await json(await fetch(`${FB}/debug_token?` + new URLSearchParams({ input_token: tok, access_token: `${appId}|${secret}` })));
+  const ids = new Set<string>();
+  for (const g of dbg.data?.granular_scopes || []) {
+    if (/^instagram_/.test(g.scope)) for (const t of g.target_ids || []) ids.add(String(t));
+  }
+  if (!ids.size) {
+    // Respaldo: cuentas de Instagram ligadas a las páginas que autorizó
+    const pg = await json(await fetch(`${FB}/me/accounts?fields=instagram_business_account&access_token=${encodeURIComponent(tok)}`));
+    for (const p of pg.data || []) if (p.instagram_business_account?.id) ids.add(String(p.instagram_business_account.id));
+  }
+  const cuentas: { id: string; username: string }[] = [];
+  for (const id of ids) {
+    const u = await json(await fetch(`${FB}/${id}?fields=username&access_token=${encodeURIComponent(tok)}`));
+    if (u.username) cuentas.push({ id, username: u.username });
+  }
+  if (!cuentas.length) throw new Error("No se eligió ninguna cuenta de Instagram profesional. Vuelve a conectar y marca la cuenta de la marca.");
+  // Si autorizó varias, se usa la que más se parece al nombre de la marca
+  const m = norm(st.marca);
+  const elegida = cuentas.find((c) => norm(c.username).includes(m) || m.includes(norm(c.username))) ||
+    cuentas.find((c) => norm(c.username).includes(m.slice(0, 6))) || cuentas[0];
+  await guardarCuenta({
+    red: "instagram", marca: st.marca, cuenta: "@" + elegida.username, ext_id: elegida.id, email: st.email,
+    token: tok, expira: r.expires_in ? new Date(Date.now() + Number(r.expires_in) * 1000) : null,
+  });
+  return "@" + elegida.username;
+}
+
 async function instagram(code: string, st: { marca: string; email: string | null }) {
   const appId = await config("ig_app_id");
   const secret = await secreto("redes:ig_app_secret");
-  if (!appId || !secret) throw new Error("Faltan el App ID o la clave secreta de Instagram en el CRM.");
+  if (!appId || !secret) throw new Error("Faltan el identificador o la clave secreta de la app de Meta en el CRM.");
+  if (await config("ig_config_id")) return instagramUnificado(code, st, appId, secret);
   // 1) Código → permiso corto
   const f = new URLSearchParams({ client_id: appId, client_secret: secret, grant_type: "authorization_code", redirect_uri: BASE + "instagram", code });
   const r1 = await json(await fetch("https://api.instagram.com/oauth/access_token", { method: "POST", body: f }));

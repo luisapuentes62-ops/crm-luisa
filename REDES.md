@@ -15,18 +15,17 @@ subes el creativo, escribes el copy y tocas **Publicar ahora** o **Programar**
 - Los permisos de Instagram duran 60 días y se renuevan solos cada noche.
 
 ## Configuración (una sola vez)
-### Instagram
-1. Cada Instagram debe ser cuenta **profesional** (empresa o creador).
-2. En developers.facebook.com crea una app (tipo "Empresa") y agrega el producto
-   **Instagram › API con inicio de sesión de Instagram**.
-3. En "Configurar el inicio de sesión para empresas" pega como URL de redireccionamiento:
-   `https://tvithmizrwinwsdsnabr.supabase.co/functions/v1/redes-conectar/instagram`
-4. En "Roles de la app › Probadores de Instagram" agrega cada cuenta, y acepta la invitación
-   desde Instagram (Configuración › Apps y sitios web › Invitaciones de evaluador).
-5. Copia el **ID de la app de Instagram** y la **clave secreta de la app de Instagram**
-   en el CRM, pestaña **Redes › Datos de las apps**, y luego toca **Conectar** en cada marca.
+### Instagram (app de Meta "CRM de Luisa", ya creada)
+Las apps nuevas de Meta ya no ofrecen "inicio de sesión con Instagram"; usan el **inicio de sesión unificado**
+(Facebook Login para empresas con una configuración). Ya está configurado:
+- Caso de uso "Administrar mensajes y contenido en Instagram", configuración de inicio de sesión
+  `1170894498642054` (token de usuario del sistema, no vence).
+- URL de redireccionamiento: `https://tvithmizrwinwsdsnabr.supabase.co/functions/v1/redes-conectar/instagram`
+- El identificador de la app y el de la configuración están guardados en `redes_config`.
 
-La app puede quedarse en modo desarrollo: solo la usan tus propias cuentas.
+Falta solo: copiar la **clave secreta de la app** (developers.facebook.com › CRM de Luisa › Configuración de la app ›
+Básica) en el CRM, pestaña **Redes › Datos de las apps**, y tocar **Conectar** en cada marca, eligiendo
+solo la cuenta de Instagram de esa marca.
 
 ### TikTok
 1. En developers.tiktok.com crea una app con **Login Kit** y **Content Posting API**

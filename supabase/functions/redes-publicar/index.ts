@@ -7,7 +7,15 @@ import { createClient } from "npm:@supabase/supabase-js@2.49.1";
 
 const SUPA_URL = Deno.env.get("SUPABASE_URL")!;
 const sb = createClient(SUPA_URL, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
-const IG = "https://graph.instagram.com/v22.0";
+// Las cuentas conectadas con el inicio de sesión unificado de Meta usan graph.facebook.com
+// (las de "inicio de sesión con Instagram", graph.instagram.com). igBase() lo decide según la configuración guardada.
+const IG_FB = "https://graph.facebook.com/v22.0";
+const IG_IG = "https://graph.instagram.com/v22.0";
+let IG = IG_FB;
+async function igBase() {
+  const { data } = await sb.from("redes_config").select("valor").eq("clave", "ig_config_id").maybeSingle();
+  IG = data?.valor ? IG_FB : IG_IG;
+}
 const TT = "https://open.tiktokapis.com/v2";
 const BUCKET = "creativos";
 const MAX_BYTES = 120 * 1024 * 1024; // límite de memoria de la función
@@ -263,6 +271,7 @@ async function fallar(p: Pub, e: unknown) {
 }
 
 async function procesar() {
+  await igBase();
   const hechas: string[] = [];
   // 1) Lo que quedó a medias por un corte (la función se detuvo a mitad de una subida)
   const { data: colgadas } = await sb.from("publicaciones").select("*").in("estado", ["subiendo", "publicando"]);
