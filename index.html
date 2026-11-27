@@ -739,7 +739,10 @@ async function conectar(red,marca){const sb=window.__sb;
   const{data:state,error}=await sb.rpc('redes_iniciar',{p_red:red,p_marca:marca,p_volver:location.origin+location.pathname});
   if(error){toast(/permiso/.test(error.message)?'Solo un administrador puede conectar cuentas':'No se pudo iniciar la conexión');return}
   const q=red==='instagram'
-    ?'https://www.instagram.com/oauth/authorize?'+new URLSearchParams({enable_fb_login:'0',client_id:id,redirect_uri:REDIR('instagram'),response_type:'code',scope:'instagram_business_basic,instagram_business_content_publish',state})
+    ?(RCFG.ig_config_id
+      // Inicio de sesión unificado de Meta (apps nuevas): Facebook Login para empresas con la configuración de Instagram
+      ?'https://www.facebook.com/dialog/oauth?'+new URLSearchParams({client_id:id,config_id:RCFG.ig_config_id,redirect_uri:REDIR('instagram'),response_type:'code',override_default_response_type:'true',display:'page',state})
+      :'https://www.instagram.com/oauth/authorize?'+new URLSearchParams({enable_fb_login:'0',client_id:id,redirect_uri:REDIR('instagram'),response_type:'code',scope:'instagram_business_basic,instagram_business_content_publish',state}))
     :'https://www.tiktok.com/v2/auth/authorize/?'+new URLSearchParams({client_key:id,scope:'user.info.basic,video.upload,video.publish',response_type:'code',redirect_uri:REDIR('tiktok'),state});
   location.href=q}
 async function quitarCuenta(c,b){if(!b.dataset.armed){b.dataset.armed='1';b.textContent='¿Quitar? Toca otra vez';return}
@@ -748,14 +751,14 @@ async function quitarCuenta(c,b){if(!b.dataset.armed){b.dataset.armed='1';b.text
 function copiable(txt){return h('div',{class:'row',style:'gap:6px'},h('code',{class:'rd-code',text:txt}),h('button',{class:'btn small',type:'button',onclick:()=>navigator.clipboard?.writeText(txt).then(()=>toast('Copiado'))},'Copiar'))}
 function configBox(){
   const f=(id,ph,val,pw)=>h('input',{id,placeholder:ph,value:val||'',type:pw?'password':'text',autocomplete:'off'});
-  const igId=f('r-igid','App ID de Instagram',RCFG.ig_app_id),igSec=f('r-igsec',RSEC.ig_secret?'Guardada ✓ (escribe para cambiarla)':'Clave secreta de Instagram','',true);
+  const igId=f('r-igid','Identificador de la app de Meta',RCFG.ig_app_id),igSec=f('r-igsec',RSEC.ig_secret?'Guardada ✓ (escribe para cambiarla)':'Clave secreta de la app de Meta','',true);
   const ttId=f('r-ttid','Client key de TikTok',RCFG.tt_client_key),ttSec=f('r-ttsec',RSEC.tt_secret?'Guardada ✓ (escribe para cambiarla)':'Client secret de TikTok','',true);
   const save=h('button',{class:'btn primary',type:'button',onclick:async()=>{save.disabled=true;
     const{error}=await window.__sb.rpc('redes_config_guardar',{p_ig_app_id:igId.value.trim(),p_ig_secret:igSec.value.trim(),p_tt_key:ttId.value.trim(),p_tt_secret:ttSec.value.trim()});
     save.disabled=false;if(error){toast('No se guardó: '+error.message);return}toast('Datos de las apps guardados');loadRedes()}},'Guardar');
   return fold('Datos de las apps (solo una vez)',null,!(RCFG.ig_app_id&&RSEC.ig_secret),h('div',{class:'stack',style:'gap:12px'},
     h('p',{class:'note',style:'margin:0',text:'Las claves secretas se guardan cifradas y nadie las puede volver a ver. En cada app, pega esta dirección donde pida "Redirect URI" o "URL de redireccionamiento":'}),
-    h('div',{class:'stack',style:'gap:6px'},h('b',{text:'Instagram'}),copiable(REDIR('instagram')),h('div',{class:'grid2'},igId,igSec)),
+    h('div',{class:'stack',style:'gap:6px'},h('b',{text:'Instagram (app de Meta)'}),h('span',{class:'note',text:'La clave secreta está en developers.facebook.com › tu app › Configuración de la app › Básica › Clave secreta de la app (toca Mostrar).'}),copiable(REDIR('instagram')),h('div',{class:'grid2'},igId,igSec)),
     h('div',{class:'stack',style:'gap:6px'},h('b',{text:'TikTok'}),copiable(REDIR('tiktok')),h('div',{class:'grid2'},ttId,ttSec)),
     h('div',{class:'row'},save)))}
 function renderRedes(){
@@ -768,7 +771,7 @@ function renderRedes(){
   const ms=marcaFiltro==='todas'?MARCAS:[marcaFiltro];
   const filas=[];
   for(const m of ms)for(const red of['instagram','tiktok']){const c=CUENTAS.find(x=>x.red===red&&x.marca===m);
-    const vence=c&&red==='instagram'&&c.expira?' · se renueva sola (vence '+fechaCorta(c.expira.slice(0,10))+')':'';
+    const vence=c&&red==='instagram'?(c.expira?' · se renueva sola (vence '+fechaCorta(c.expira.slice(0,10))+')':' · permiso sin vencimiento'):'';
     filas.push(h('div',{class:'acc',style:'--bc:'+bc(m)+(c?'':';border-style:dashed')},blogo(m,20),
       h('div',{class:'acc-t'},h('b',{text:m+' · '+RED_N[red]}),h('span',{class:'meta',text:c?(c.cuenta+vence):'Sin conectar'})),
       redesAdmin?h('div',{class:'acc-a row'},h('button',{class:'btn small'+(c?'':' primary'),type:'button',onclick:()=>conectar(red,m)},c?'Reconectar':'Conectar'),
