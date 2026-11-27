@@ -67,25 +67,50 @@ async function instagramUnificado(code: string, st: { marca: string; email: stri
   const tok = r.access_token as string;
   // Qué cuentas de Instagram autorizó la persona
   const dbg = await json(await fetch(`${FB}/debug_token?` + new URLSearchParams({ input_token: tok, access_token: `${appId}|${secret}` })));
+  const gs = (dbg.data?.granular_scopes || []) as { scope: string; target_ids?: string[] }[];
+  console.log("debug_token", JSON.stringify({ type: dbg.data?.type, scopes: dbg.data?.scopes, granular: gs, err: dbg.error?.message }));
+  const at = encodeURIComponent(tok);
   const ids = new Set<string>();
-  for (const g of dbg.data?.granular_scopes || []) {
-    if (/^instagram_/.test(g.scope)) for (const t of g.target_ids || []) ids.add(String(t));
-  }
-  if (!ids.size) {
-    // Respaldo: cuentas de Instagram ligadas a las páginas que autorizó
-    const pg = await json(await fetch(`${FB}/me/accounts?fields=instagram_business_account&access_token=${encodeURIComponent(tok)}`));
-    for (const p of pg.data || []) if (p.instagram_business_account?.id) ids.add(String(p.instagram_business_account.id));
+  const negocios = new Set<string>();
+  for (const g of gs) {
+    if (/instagram/.test(g.scope)) for (const t of g.target_ids || []) ids.add(String(t));
+    if (g.scope === "business_management") for (const t of g.target_ids || []) negocios.add(String(t));
   }
   const cuentas: { id: string; username: string }[] = [];
+  const agregar = (id: string, username?: string) => {
+    if (username && !cuentas.some((c) => c.id === id)) cuentas.push({ id, username });
+  };
   for (const id of ids) {
-    const u = await json(await fetch(`${FB}/${id}?fields=username&access_token=${encodeURIComponent(tok)}`));
-    if (u.username) cuentas.push({ id, username: u.username });
+    const u = await json(await fetch(`${FB}/${id}?fields=username&access_token=${at}`));
+    if (u.username) agregar(id, u.username);
+    else {
+      // Puede ser una página o un negocio: buscar su Instagram
+      const p = await json(await fetch(`${FB}/${id}?fields=instagram_business_account{id,username}&access_token=${at}`));
+      if (p.instagram_business_account?.username) agregar(p.instagram_business_account.id, p.instagram_business_account.username);
+      else console.log("id sin instagram", id, JSON.stringify(u.error || p.error || {}).slice(0, 200));
+    }
+  }
+  if (!cuentas.length) {
+    // Respaldo 1: cuentas de Instagram ligadas a las páginas que autorizó
+    const pg = await json(await fetch(`${FB}/me/accounts?fields=instagram_business_account{id,username}&access_token=${at}`));
+    for (const p of pg.data || []) if (p.instagram_business_account) agregar(p.instagram_business_account.id, p.instagram_business_account.username);
+    // Respaldo 2: cuentas de Instagram de los negocios autorizados
+    for (const b of negocios) {
+      for (const ed of ["owned_instagram_accounts", "instagram_accounts", "instagram_business_accounts"]) {
+        const r2 = await json(await fetch(`${FB}/${b}/${ed}?fields=id,username&access_token=${at}`));
+        for (const a of r2.data || []) agregar(String(a.id), a.username);
+      }
+    }
+    // Respaldo 3: cuentas asignadas al usuario del sistema
+    const me = await json(await fetch(`${FB}/me?fields=id,name&access_token=${at}`));
+    console.log("me", JSON.stringify(me).slice(0, 200), "paginas", JSON.stringify(pg).slice(0, 300));
   }
   if (!cuentas.length) throw new Error("No se eligió ninguna cuenta de Instagram profesional. Vuelve a conectar y marca la cuenta de la marca.");
   // Si autorizó varias, se usa la que más se parece al nombre de la marca
   const m = norm(st.marca);
   const elegida = cuentas.find((c) => norm(c.username).includes(m) || m.includes(norm(c.username))) ||
-    cuentas.find((c) => norm(c.username).includes(m.slice(0, 6))) || cuentas[0];
+    cuentas.find((c) => norm(c.username).includes(m.slice(0, 6))) || (cuentas.length === 1 ? cuentas[0] : null);
+  if (!elegida) throw new Error("Ninguna de las cuentas autorizadas (" + cuentas.map((c) => "@" + c.username).join(", ") + ") parece de " + st.marca + ". Vuelve a conectar y marca solo la cuenta de la marca.");
   await guardarCuenta({
     red: "instagram", marca: st.marca, cuenta: "@" + elegida.username, ext_id: elegida.id, email: st.email,
     token: tok, expira: r.expires_in ? new Date(Date.now() + Number(r.expires_in) * 1000) : null,
