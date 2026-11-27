@@ -47,6 +47,7 @@ end $$;
 drop trigger if exists redes_cuentas_borrar_tokens on public.redes_cuentas;
 create trigger redes_cuentas_borrar_tokens after delete on public.redes_cuentas
   for each row execute function public.redes_cuentas_borrar_tokens();
+revoke all on function public.redes_cuentas_borrar_tokens() from public, anon, authenticated;
 
 -- Estados temporales del inicio de sesión con Instagram/TikTok (protegen el regreso al CRM)
 create table if not exists public.redes_estados (
