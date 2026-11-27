@@ -148,8 +148,10 @@ legend{font-size:12px;font-weight:600;color:var(--muted);padding:0 4px}
 .cj .r{text-align:right;font-variant-numeric:tabular-nums}
 .cj .hi{color:#b3261e;font-weight:600}.cj .lo{color:#127a55;font-weight:600}
 .buf{border:1px dashed var(--line);border-radius:8px;padding:8px;display:flex;flex-direction:column;gap:6px}
-.buf-h{display:flex;align-items:center;gap:8px;justify-content:space-between}
+.buf-h{display:flex;align-items:center;gap:4px 8px;justify-content:space-between;flex-wrap:wrap}
+.buf .row .btn{max-width:100%;white-space:normal}
 .buf-logo{font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+.rd-code{font-size:12px;background:var(--soft);padding:4px 8px;border-radius:6px;word-break:break-all;min-width:0;flex:1 1 220px}
 .ief{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted);font-weight:500;min-width:0}
 .ie{font-size:13px;padding:6px 8px;border-radius:8px;border-color:transparent;background:var(--soft)}
 .ie:hover{border-color:var(--line)}
@@ -230,6 +232,7 @@ a.btn{text-decoration:none;display:inline-block}
     <button role="tab" data-tab="analisis" aria-selected="false">Análisis</button>
     <button role="tab" data-tab="equipo" aria-selected="false">Equipo</button>
     <button role="tab" data-tab="accesos" aria-selected="false">Accesos</button>
+    <button role="tab" data-tab="redes" aria-selected="false">Redes</button>
   </nav>
   <div class="spacer"></div>
   <select id="marca-global" aria-label="Marca" style="width:auto"></select>
@@ -244,6 +247,7 @@ a.btn{text-decoration:none;display:inline-block}
   <section id="v-analisis" hidden></section>
   <section id="v-equipo" hidden></section>
   <section id="v-accesos" hidden></section>
+  <section id="v-redes" hidden></section>
 </main>
 <div id="tip" role="tooltip" hidden></div>
 
@@ -304,7 +308,7 @@ a.btn{text-decoration:none;display:inline-block}
     <div class="grid2">
       <label class="f">Hashtags<input id="p-hashtags" placeholder="#Armenia #Quindío"></label>
       <label class="f">Diseño (enlace de Canva o Drive)<input id="p-link" placeholder="https://"></label>
-      <label class="f">Archivo final para Buffer (enlace público directo al video o imagen)<input id="p-media" placeholder="https://…/video.mp4"></label>
+      <label class="f">Archivo final (enlace de Drive compartido con "Cualquier persona con el enlace")<input id="p-media" placeholder="https://drive.google.com/…"></label>
     </div>
   </div>
   <div class="dlg-f">
@@ -600,76 +604,188 @@ function postCard(p){
         ie(p,'publica',sel(peopleOpts(null,'Sin asignar')),'Publica'),
         ie(p,'hashtags',h('input'),'Hashtags'),
         ie(p,'link',h('input',{placeholder:'https://'}),'Diseño (Canva o Drive)'),
-        ie(p,'media',h('input',{placeholder:'https://…/video.mp4'}),'Archivo final para Buffer'))),'m:'+p.id,false),
-      bufferBox(p),
+        ie(p,'media',h('input',{placeholder:'https://drive.google.com/… o sube el archivo abajo'}),'Archivo final (enlace de Drive o subido)',v=>savePost(p,{media:v,mediaTipo:null})))),'m:'+p.id,false),
+      redesBox(p),
       h('div',{class:'foot'},p.link&&/^https:\/\//.test(p.link)?h('a',{href:p.link,target:'_blank',rel:'noopener',class:'meta'},'Ver diseño'):h('span'),h('button',{class:'btn small',type:'button',onclick:()=>openPost(p)},'Abrir en ventana'))));
   return keepOpen(d,'p:'+p.id,false);
 }
 
 
-// ---------- BUFFER ----------
-// Cuenta de Buffer de Luisa (plan gratis). Solo Tecnocámaras tiene canales: Instagram y TikTok.
-const BUFFER={server:'Buffer',org:'6b05b88c6ddcdf5ad5a7e125',marcas:{}};
-let mcp=null, bufferMsg='';
-const BUF_LABEL={draft:'Borrador en Buffer',needs_approval:'Por aprobar en Buffer',scheduled:'Programada en Buffer',sending:'Enviándose',sent:'Publicada por Buffer',error:'Error en Buffer'};
-function bufferCanal(p){const m=BUFFER.marcas[p.marca];if(!m)return null;const r=p.red||'';if(r.startsWith('Instagram'))return{id:m.Instagram,red:'Instagram'};if(r==='TikTok')return{id:m.TikTok,red:'TikTok'};return null}
-function bufferBox(p){
-  const c=bufferCanal(p);
-  if(!BUFFER.marcas[p.marca])return null;
-  const box=h('div',{class:'buf'});
-  box.append(h('div',{class:'buf-h'},h('span',{class:'buf-logo',text:'Buffer'}),p.bufferId?h('span',{class:'pill '+(p.bufferStatus==='sent'?'p-publicado':p.bufferStatus==='error'?'p-tarde':'p-programado'),text:BUF_LABEL[p.bufferStatus]||'Enviada a Buffer'}):null));
-  if(p.bufferId){box.append(h('div',{class:'meta',text:p.bufferModo==='draft'?'Quedó como borrador en Buffer: revísalo y prográmalo allá.':'Buffer la publica en la fecha y hora indicadas.'}));return box}
-  if(!c){box.append(h('div',{class:'meta',text:'Buffer solo tiene Instagram y TikTok de esta marca. Cambia la red para enviarla.'}));return box}
-  const falta=[];if(p.estado!=='aprobado')falta.push('márcala como Aprobada');if(!p.media)falta.push('agrega el archivo final');if(!p.copy)falta.push('escribe el copy');
-  const dueOk=p.fecha&&p.hora&&new Date(p.fecha+'T'+p.hora+':00-05:00')>new Date();
-  if(!dueOk)falta.push('ponle fecha y hora futuras');
-  if(falta.length){box.append(h('div',{class:'meta',text:'Para enviarla a '+c.red+': '+falta.join(', ')+'.'}));return box}
-  if(!mcp){box.append(h('div',{class:'meta',text:'La conexión con Buffer no está disponible en esta vista.'}));return box}
-  const msg=h('div',{class:'meta'});
-  const go=(modo)=>async e=>{const b=e.currentTarget;
-    if(!b.dataset.armed){box.querySelectorAll('button').forEach(x=>{x.dataset.armed='';x.textContent=x.dataset.label});b.dataset.armed='1';b.textContent=modo==='draft'?'¿Crear borrador? Toca otra vez':'¿Programar para el '+fechaCorta(p.fecha)+' '+p.hora+'? Toca otra vez';return}
-    box.querySelectorAll('button').forEach(x=>x.disabled=true);msg.textContent='Enviando a Buffer…';
-    try{const r=await mcp.callTool(BUFFER.server,'create_post',bufferInput(p,c,modo));
-      const pl=r.payload||{};const id=pl.id||pl.post?.id||pl.data?.id||pl.createPost?.post?.id||'enviada';
-      await db.collection('contenido').doc(p.id).update({bufferId:String(id),bufferStatus:modo==='draft'?'draft':'scheduled',bufferModo:modo,estado:modo==='draft'?p.estado:'programado',actualizado:new Date().toISOString()});
-      toast(modo==='draft'?'Borrador creado en Buffer':'Programada en Buffer');
-    }catch(err){box.querySelectorAll('button').forEach(x=>x.disabled=false);msg.textContent=bufferError(err)}};
-  const b1=h('button',{class:'btn small',type:'button','data-label':'Borrador en Buffer',onclick:go('draft')},'Borrador en Buffer');
-  const b2=h('button',{class:'btn small primary',type:'button','data-label':'Programar en Buffer',onclick:go('schedule')},'Programar en Buffer');
-  box.append(h('div',{class:'meta',text:'Lista para '+c.red+' el '+fechaCorta(p.fecha)+' a las '+p.hora+'.'}),h('div',{class:'row'},b1,b2),msg);
+// ---------- REDES: publicar directo en Instagram y TikTok ----------
+// El CRM guarda la publicación en la cola (tabla publicaciones) y el servidor de Supabase
+// (función redes-publicar) la sube a su hora. Sin intermediarios.
+const CFG=window.CRM_CONFIG||{};
+const FN=(CFG.SUPABASE_URL||'')+'/functions/v1/';
+const RED_N={instagram:'Instagram',tiktok:'TikTok'};
+const PUB_L={pendiente:'Programada',subiendo:'Subiendo…',procesando:'Procesando…',publicando:'Publicando…',publicada:'Publicada',en_borradores:'En borradores de TikTok',error:'Error',cancelada:'Cancelada'};
+const PUB_C={pendiente:'p-programado',subiendo:'p-aprobado',procesando:'p-aprobado',publicando:'p-aprobado',publicada:'p-publicado',en_borradores:'p-aprobado',error:'p-tarde',cancelada:'p-idea'};
+const EN_CURSO=['subiendo','procesando','publicando'];
+let CUENTAS=[], PUBS=[], RCFG={}, RSEC={}, redesAdmin=false, redesReady=false, redesError=null, ttInfo={};
+const redDe=p=>{const r=p.red||'';return r.startsWith('Instagram')?'instagram':r==='TikTok'?'tiktok':null};
+const esVideo=p=>p.mediaTipo?p.mediaTipo==='video':(/\.(mp4|mov|m4v|webm)(\?|$)/i.test(p.media||'')||p.formato==='Reel'||p.formato==='Video');
+const fechaHora=iso=>new Date(iso).toLocaleString('es-CO',{timeZone:'America/Bogota',weekday:'short',day:'numeric',month:'short',hour:'numeric',minute:'2-digit'});
+function horaPub(p){return p.fecha&&p.hora?new Date(p.fecha+'T'+p.hora+':00-05:00'):null}
+async function loadRedes(){const sb=window.__sb;if(!sb)return;
+  const[c,pu,cf,se,ad]=await Promise.all([sb.from('redes_cuentas').select('id,red,marca,cuenta,expira,refresh_expira,conectado_por,actualizado'),
+    sb.from('publicaciones').select('*').order('creado',{ascending:false}).limit(300),sb.from('redes_config').select('clave,valor'),sb.rpc('redes_config_estado'),sb.rpc('soy_admin_crm')]);
+  redesAdmin=!ad.error&&ad.data===true;
+  redesError=c.error||pu.error||null;CUENTAS=c.data||[];PUBS=pu.data||[];
+  RCFG=Object.fromEntries((cf.data||[]).map(x=>[x.clave,x.valor]));RSEC=se.data||{};redesReady=true;render();seguir()}
+let redesCh=null;
+function escucharRedes(){const sb=window.__sb;if(!sb||redesCh)return;
+  redesCh=sb.channel('publicaciones-crm').on('postgres_changes',{event:'*',schema:'public',table:'publicaciones'},()=>loadRedes()).subscribe()}
+// Despierta al servidor para que publique ya (el reloj de Supabase también lo hace cada minuto)
+async function empujar(){const sb=window.__sb;try{const{data}=await sb.auth.getSession();const t=data.session?.access_token;if(!t)return null;
+  const r=await fetch(FN+'redes-publicar',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+t,apikey:CFG.SUPABASE_ANON_KEY},body:'{}'});
+  return await r.json().catch(()=>null)}catch(e){return null}}
+let seguirT=null,seguirN=0;
+function seguir(){clearTimeout(seguirT);
+  if(!PUBS.some(x=>EN_CURSO.includes(x.estado))){seguirN=0;return}
+  if(++seguirN>60)return;
+  seguirT=setTimeout(async()=>{if(!document.hidden)await empujar();loadRedes()},10000)}
+
+async function subirCreativo(p,file,msg){const sb=window.__sb;
+  const video=file.type.startsWith('video/');
+  if(!video&&!file.type.startsWith('image/')){msg.textContent='Ese archivo no es imagen ni video.';return}
+  let blob=file,ext=(file.name.split('.').pop()||'').toLowerCase(),tipo=file.type;
+  if(!video){ // Instagram solo acepta JPG: se convierte aquí (máx. 1440 px de ancho)
+    try{const bmp=await createImageBitmap(file);const k=Math.min(1,1440/bmp.width);const cv=document.createElement('canvas');
+      cv.width=Math.round(bmp.width*k);cv.height=Math.round(bmp.height*k);const cx=cv.getContext('2d');cx.fillStyle='#fff';cx.fillRect(0,0,cv.width,cv.height);cx.drawImage(bmp,0,0,cv.width,cv.height);
+      blob=await new Promise(r=>cv.toBlob(r,'image/jpeg',0.92));ext='jpg';tipo='image/jpeg'}catch(e){msg.textContent='No se pudo leer la imagen.';return}}
+  if(blob.size>50*1024*1024){msg.textContent='Pesa '+Math.round(blob.size/1048576)+' MB y el máximo para subir aquí es 50 MB. Súbelo a Drive (compartido con "Cualquier persona con el enlace") y pega el enlace en "Archivo final".';return}
+  const slug=s=>String(s||'x').normalize('NFD').replace(/[^\w]+/g,'-').toLowerCase();
+  const path=slug(p.marca)+'/'+p.id+'-'+Date.now()+'.'+(ext||(video?'mp4':'jpg'));
+  msg.textContent='Subiendo '+(video?'video':'imagen')+' ('+Math.max(1,Math.round(blob.size/1048576))+' MB)…';
+  const{error}=await sb.storage.from('creativos').upload(path,blob,{contentType:tipo,upsert:false});
+  if(error){msg.textContent='No se pudo subir: '+error.message;return}
+  const url=sb.storage.from('creativos').getPublicUrl(path).data.publicUrl;
+  await savePost(p,{media:url,mediaTipo:video?'video':'imagen'});msg.textContent=''}
+
+function redesBox(p){
+  const red=redDe(p);const box=h('div',{class:'buf'});
+  const pubs=PUBS.filter(x=>x.contenido_id===p.id);const last=pubs[0];
+  box.append(h('div',{class:'buf-h'},h('span',{class:'buf-logo',text:'Publicar en '+(red?RED_N[red]:'redes')}),last?h('span',{class:'pill '+PUB_C[last.estado],text:PUB_L[last.estado]}):null));
+  if(!redesReady)return null;
+  if(redesError){box.append(h('div',{class:'meta',text:'La publicación directa todavía no está activada en la base de datos.'}));return box}
+  if(!red){box.append(h('div',{class:'meta',text:'Desde el CRM se publica en Instagram y TikTok. Cambia la red en "Más campos" para usarlo.'}));return box}
+  const cuenta=CUENTAS.find(c=>c.red===red&&c.marca===p.marca);
+  if(!cuenta){box.append(h('div',{class:'meta',text:'Falta conectar el '+RED_N[red]+' de '+p.marca+' en la pestaña Redes.'}));return box}
+  const msg=h('div',{class:'meta',role:'status'});
+  if(last&&last.estado==='pendiente'){
+    box.append(h('div',{class:'meta',text:'Sale el '+fechaHora(last.programada)+' en '+cuenta.cuenta+'.'}));
+    box.append(h('div',{class:'row'},h('button',{class:'btn small',type:'button',onclick:async e=>{e.target.disabled=true;
+      const{error}=await window.__sb.from('publicaciones').update({estado:'cancelada',actualizado:new Date().toISOString()}).eq('id',last.id).eq('estado','pendiente');
+      if(error){e.target.disabled=false;toast('No se pudo cancelar');return}
+      if(p.estado==='programado')await savePost(p,{estado:'aprobado'});toast('Publicación cancelada');loadRedes()}},'Cancelar')));return box}
+  if(last&&EN_CURSO.includes(last.estado)){box.append(h('div',{class:'meta',text:'Subiendo a '+cuenta.cuenta+'. Puede tardar uno o dos minutos con videos.'}));return box}
+  if(last&&last.estado==='publicada'){box.append(h('div',{class:'meta'},'Publicada en '+cuenta.cuenta+'. ',last.permalink?h('a',{href:last.permalink,target:'_blank',rel:'noopener'},'Ver publicación'):null));return box}
+  if(last&&last.estado==='en_borradores'){
+    box.append(h('div',{class:'meta',text:'Quedó en tus borradores de TikTok: abre la app, pega el copy y publícala.'}),
+      h('div',{class:'row'},h('button',{class:'btn small',type:'button',onclick:()=>{navigator.clipboard?.writeText([p.copy,p.hashtags].filter(Boolean).join('\n\n')).then(()=>toast('Copy copiado'),()=>toast('No se pudo copiar'))}},'Copiar copy')));return box}
+  if(last&&last.estado==='error')box.append(h('div',{class:'meta',style:'color:var(--bad)',text:last.error||'Algo falló.'}));
+  // Creativo
+  const file=h('input',{type:'file',accept:'image/*,video/*',hidden:true});
+  file.addEventListener('change',()=>{const f=file.files[0];if(f)subirCreativo(p,f,msg);file.value=''});
+  box.append(h('div',{class:'row'},p.media?h('a',{href:p.media,target:'_blank',rel:'noopener',class:'meta'},esVideo(p)?'Ver video':'Ver imagen'):h('span',{class:'meta',text:'Sin creativo'}),
+    h('button',{class:'btn small',type:'button',disabled:!canWrite,onclick:()=>file.click()},p.media?'Cambiar creativo':'Subir creativo'),file));
+  // Tipo
+  let tipo,priv=null;
+  if(red==='instagram'){
+    const def=p.formato==='Historia'?(esVideo(p)?'historia_video':'historia_imagen'):(esVideo(p)?'reel':'imagen');
+    const s=h('select',{class:'ie','aria-label':'Tipo'},opts([{v:'reel',l:'Reel'},{v:'imagen',l:'Foto en el feed'},{v:'historia_video',l:'Historia (video)'},{v:'historia_imagen',l:'Historia (foto)'}]));
+    s.value=def;tipo=()=>s.value;box.append(h('label',{class:'ief'},h('span',{text:'Tipo'}),s));
+  }else{
+    const s=h('select',{class:'ie','aria-label':'Cómo subirlo'},opts([{v:'borrador',l:'A mis borradores de TikTok (yo le doy Publicar)'},{v:'directo',l:'Publicar directo'}]));
+    const ps=h('select',{class:'ie','aria-label':'Quién puede verlo'},h('option',{value:'',text:'Elige quién puede verlo'}));
+    const pl=h('label',{class:'ief',style:'display:none'},h('span',{text:'Quién puede verlo'}),ps);
+    const PRIV={PUBLIC_TO_EVERYONE:'Todos',MUTUAL_FOLLOW_FRIENDS:'Amigos',FOLLOWER_OF_CREATOR:'Seguidores',SELF_ONLY:'Solo yo'};
+    s.addEventListener('change',async()=>{pl.style.display=s.value==='directo'?'':'none';if(s.value!=='directo'||ttInfo[cuenta.id])return fill();
+      msg.textContent='Consultando la cuenta de TikTok…';const{data}=await window.__sb.auth.getSession();
+      try{const r=await fetch(FN+'redes-publicar',{method:'POST',headers:{'Content-Type':'application/json',Authorization:'Bearer '+data.session?.access_token,apikey:CFG.SUPABASE_ANON_KEY},body:JSON.stringify({accion:'tiktok_info',cuenta_id:cuenta.id})});
+        const j=await r.json();if(j.error)throw new Error(j.error);ttInfo[cuenta.id]=j;msg.textContent='';fill()}catch(e){msg.textContent=String(e.message||e)}});
+    function fill(){const i=ttInfo[cuenta.id];if(!i)return;ps.replaceChildren(h('option',{value:'',text:'Elige quién puede verlo'}),...i.privacidad.map(v=>h('option',{value:v,text:PRIV[v]||v})))}
+    tipo=()=>s.value;priv=()=>ps.value;
+    box.append(h('label',{class:'ief'},h('span',{text:'Cómo subirlo'}),s),pl,
+      h('div',{class:'meta',text:'Mientras TikTok no apruebe la app, lo directo sale solo en privado. En borradores te llega a la app para publicarlo tú.'}));
+  }
+  const cuando=horaPub(p);
+  const falta=[];if(!p.media)falta.push('sube el creativo');if(!p.copy&&!(tipo()||'').startsWith('historia')&&tipo()!=='borrador')falta.push('escribe el copy');
+  if(falta.length)box.append(h('div',{class:'meta',text:'Para publicar: '+falta.join(' y ')+'.'}));
+  const go=modo=>async e=>{const b=e.currentTarget;
+    if(falta.length){msg.textContent='Para publicar: '+falta.join(' y ')+'.';return}
+    const t=tipo();if(red==='tiktok'&&t==='directo'&&!priv()){msg.textContent='Elige quién puede verlo.';return}
+    if(modo==='prog'&&(!cuando||cuando<=new Date())){msg.textContent='Pon una fecha y hora futuras en la publicación para programarla.';return}
+    if(!b.dataset.armed){box.querySelectorAll('button[data-armed]').forEach(x=>{x.dataset.armed='';x.textContent=x.dataset.label});
+      b.dataset.armed='1';b.textContent=modo==='ya'?'¿Publicar ya? Toca otra vez':'¿Programar? Toca otra vez';return}
+    box.querySelectorAll('button').forEach(x=>x.disabled=true);msg.textContent='Enviando…';
+    const row={contenido_id:p.id,cuenta_id:cuenta.id,red,tipo:t,media_url:p.media,copy:[p.copy,p.hashtags].filter(Boolean).join('\n\n'),
+      privacidad:red==='tiktok'&&t==='directo'?priv():null,programada:(modo==='ya'?new Date():cuando).toISOString()};
+    const{error}=await window.__sb.from('publicaciones').insert(row);
+    if(error){box.querySelectorAll('button').forEach(x=>x.disabled=false);msg.textContent='No se pudo enviar: '+error.message;return}
+    if(modo==='prog'&&p.estado!=='publicado')await savePost(p,{estado:'programado'});
+    toast(modo==='ya'?'Publicando…':'Programada para el '+fechaHora(row.programada));
+    await loadRedes();if(modo==='ya'){empujar().then(loadRedes)}};
+  const b1=h('button',{class:'btn small',type:'button','data-armed':'','data-label':'Publicar ahora',disabled:!canWrite,onclick:go('ya')},'Publicar ahora');
+  const b2=h('button',{class:'btn small primary',type:'button','data-armed':'','data-label':'Programar',disabled:!canWrite,onclick:go('prog'),title:cuando?'Sale el '+fechaHora(cuando.toISOString()):'Pon fecha y hora a la publicación'},'Programar');
+  box.append(h('div',{class:'row'},b1,b2),cuando&&cuando>new Date()?h('div',{class:'meta',text:'Programar la deja para el '+fechaHora(cuando.toISOString())}):null,msg);
   return box;
 }
-function bufferInput(p,c,modo){
-  const text=[p.copy,p.hashtags].filter(Boolean).join('\n\n');
-  const isVideo=/\.(mp4|mov|m4v|webm)(\?|$)/i.test(p.media)||p.formato==='Reel'||p.formato==='Video';
-  const inp={channelId:c.id,schedulingType:'automatic',mode:'customScheduled',dueAt:p.fecha+'T'+p.hora+':00-05:00',text,
-    assets:[isVideo?{video:{url:p.media}}:{image:{url:p.media,metadata:{altText:p.tema||''}}}]};
-  if(c.red==='Instagram')inp.metadata={instagram:{type:p.formato==='Historia'?'story':(isVideo?'reel':'post'),shouldShareToFeed:true}};
-  if(c.red==='TikTok')inp.metadata={tiktok:{title:(p.tema||'').slice(0,90)}};
-  if(modo==='draft')inp.saveToDraft=true;
-  return inp;
+
+// Pestaña Redes: conectar cuentas y ver lo publicado
+const REDIR=r=>FN+'redes-conectar/'+r;
+async function conectar(red,marca){const sb=window.__sb;
+  const id=red==='instagram'?RCFG.ig_app_id:RCFG.tt_client_key;
+  if(!id||!(red==='instagram'?RSEC.ig_secret:RSEC.tt_secret)){toast('Primero guarda los datos de la app de '+RED_N[red]);return}
+  const{data:state,error}=await sb.rpc('redes_iniciar',{p_red:red,p_marca:marca,p_volver:location.origin+location.pathname});
+  if(error){toast(/permiso/.test(error.message)?'Solo un administrador puede conectar cuentas':'No se pudo iniciar la conexión');return}
+  const q=red==='instagram'
+    ?'https://www.instagram.com/oauth/authorize?'+new URLSearchParams({enable_fb_login:'0',client_id:id,redirect_uri:REDIR('instagram'),response_type:'code',scope:'instagram_business_basic,instagram_business_content_publish',state})
+    :'https://www.tiktok.com/v2/auth/authorize/?'+new URLSearchParams({client_key:id,scope:'user.info.basic,video.upload,video.publish',response_type:'code',redirect_uri:REDIR('tiktok'),state});
+  location.href=q}
+async function quitarCuenta(c,b){if(!b.dataset.armed){b.dataset.armed='1';b.textContent='¿Quitar? Toca otra vez';return}
+  const{error}=await window.__sb.from('redes_cuentas').delete().eq('id',c.id);
+  if(error){toast('Solo un administrador puede quitar cuentas');return}toast('Cuenta desconectada');loadRedes()}
+function copiable(txt){return h('div',{class:'row',style:'gap:6px'},h('code',{class:'rd-code',text:txt}),h('button',{class:'btn small',type:'button',onclick:()=>navigator.clipboard?.writeText(txt).then(()=>toast('Copiado'))},'Copiar'))}
+function configBox(){
+  const f=(id,ph,val,pw)=>h('input',{id,placeholder:ph,value:val||'',type:pw?'password':'text',autocomplete:'off'});
+  const igId=f('r-igid','App ID de Instagram',RCFG.ig_app_id),igSec=f('r-igsec',RSEC.ig_secret?'Guardada ✓ (escribe para cambiarla)':'Clave secreta de Instagram','',true);
+  const ttId=f('r-ttid','Client key de TikTok',RCFG.tt_client_key),ttSec=f('r-ttsec',RSEC.tt_secret?'Guardada ✓ (escribe para cambiarla)':'Client secret de TikTok','',true);
+  const save=h('button',{class:'btn primary',type:'button',onclick:async()=>{save.disabled=true;
+    const{error}=await window.__sb.rpc('redes_config_guardar',{p_ig_app_id:igId.value.trim(),p_ig_secret:igSec.value.trim(),p_tt_key:ttId.value.trim(),p_tt_secret:ttSec.value.trim()});
+    save.disabled=false;if(error){toast('No se guardó: '+error.message);return}toast('Datos de las apps guardados');loadRedes()}},'Guardar');
+  return fold('Datos de las apps (solo una vez)',null,!(RCFG.ig_app_id&&RSEC.ig_secret),h('div',{class:'stack',style:'gap:12px'},
+    h('p',{class:'note',style:'margin:0',text:'Las claves secretas se guardan cifradas y nadie las puede volver a ver. En cada app, pega esta dirección donde pida "Redirect URI" o "URL de redireccionamiento":'}),
+    h('div',{class:'stack',style:'gap:6px'},h('b',{text:'Instagram'}),copiable(REDIR('instagram')),h('div',{class:'grid2'},igId,igSec)),
+    h('div',{class:'stack',style:'gap:6px'},h('b',{text:'TikTok'}),copiable(REDIR('tiktok')),h('div',{class:'grid2'},ttId,ttSec)),
+    h('div',{class:'row'},save)))}
+function renderRedes(){
+  const v=$('#v-redes');if(!v)return;v.replaceChildren();
+  v.append(h('div',{class:'section-head'},h('h2',{text:'Redes'}),h('span',{class:'spacer'}),h('span',{class:'note',text:'Publicación directa en Instagram y TikTok, sin intermediarios.'})));
+  if(!redesReady){v.append(h('div',{class:'panel empty',text:'Cargando…'}));return}
+  if(redesError){v.append(h('div',{class:'panel'},h('p',{class:'note',text:'Esta sección todavía no está activada en la base de datos.'})));return}
+  const st=h('div',{class:'stack'});
+  if(redesAdmin)st.append(configBox());
+  const ms=marcaFiltro==='todas'?MARCAS:[marcaFiltro];
+  const filas=[];
+  for(const m of ms)for(const red of['instagram','tiktok']){const c=CUENTAS.find(x=>x.red===red&&x.marca===m);
+    const vence=c&&red==='instagram'&&c.expira?' · se renueva sola (vence '+fechaCorta(c.expira.slice(0,10))+')':'';
+    filas.push(h('div',{class:'acc',style:'--bc:'+bc(m)+(c?'':';border-style:dashed')},blogo(m,20),
+      h('div',{class:'acc-t'},h('b',{text:m+' · '+RED_N[red]}),h('span',{class:'meta',text:c?(c.cuenta+vence):'Sin conectar'})),
+      redesAdmin?h('div',{class:'acc-a row'},h('button',{class:'btn small'+(c?'':' primary'),type:'button',onclick:()=>conectar(red,m)},c?'Reconectar':'Conectar'),
+        c?h('button',{class:'btn small danger',type:'button',onclick:e=>quitarCuenta(c,e.currentTarget)},'Quitar'):null):null))}
+  st.append(h('div',{class:'panel'},h('h3',{style:'margin:0 0 10px',text:'Cuentas'}),h('div',{class:'acc-list'},filas)));
+  const rec=PUBS.filter(x=>{const c=CUENTAS.find(k=>k.id===x.cuenta_id);return marcaFiltro==='todas'||!c||c.marca===marcaFiltro}).slice(0,30);
+  st.append(h('div',{class:'panel'},h('h3',{style:'margin:0 0 10px',text:'Últimas publicaciones'}),rec.length?h('div',{class:'acc-list'},rec.map(x=>{
+    const p=posts.find(k=>k.id===x.contenido_id);const c=CUENTAS.find(k=>k.id===x.cuenta_id);
+    return h('div',{class:'acc',style:'--bc:'+bc(c?.marca||p?.marca)},
+      h('div',{class:'acc-t'},h('b',{text:(p?.tema||'Publicación')}),h('span',{class:'meta',text:RED_N[x.red]+(c?' · '+c.cuenta:'')+' · '+fechaHora(x.programada)}),x.estado==='error'?h('span',{class:'meta',style:'color:var(--bad)',text:x.error||''}):null),
+      h('div',{class:'acc-a row'},x.permalink?h('a',{href:x.permalink,target:'_blank',rel:'noopener',class:'meta'},'Ver'):null,h('span',{class:'pill '+PUB_C[x.estado],text:PUB_L[x.estado]})))})):h('p',{class:'empty',text:'Todavía no se ha publicado nada desde el CRM. Usa el botón "Publicar ahora" o "Programar" dentro de cada publicación.'})));
+  v.append(st);
 }
-function bufferError(e){const c=e&&e.code;
-  if(c==='needs_reauth')return 'Buffer pide volver a conectarse: entra a claude.ai › Configuración › Conectores y reconecta Buffer.';
-  if(c==='server_not_connected'||c==='selection_required')return 'Buffer no está conectado para esta vista. Agrégalo en claude.ai › Configuración › Conectores.';
-  if(c==='not_in_manifest'||c==='approval_required')return 'Falta permitir que el CRM use Buffer. Vuelve a tocar el botón y acepta el permiso.';
-  if(c==='tool_error')return 'Buffer no aceptó la publicación: '+String(e.message||'').slice(0,200);
-  if(c==='server_unavailable'||c==='upstream_error')return 'Buffer no respondió. Revisa en Buffer si la publicación quedó creada antes de volver a intentarlo.';
-  return 'No se pudo enviar a Buffer ('+(c||'error')+').';
-}
-let syncStarted=false;
-function bufferSync(){
-  if(!mcp||syncStarted)return;syncStarted=true;
-  const since=addDays(today(),-30)+'T00:00:00-05:00';
-  mcp.watchTool(BUFFER.server,'list_posts',{organizationId:BUFFER.org,createdAt:{start:since},first:50},ev=>{
-    if(ev.type!=='data')return;
-    const pl=ev.result.payload;let arr=Array.isArray(pl)?pl:(pl&&(pl.posts||pl.data||pl.items||pl.edges))||[];
-    arr=arr.map(x=>x&&x.node?x.node:x).filter(x=>x&&x.id);
-    for(const bp of arr){const p=posts.find(x=>x.bufferId===String(bp.id));if(!p)continue;const st=String(bp.status||'').toLowerCase();if(!st||st===p.bufferStatus)continue;
-      const patch={bufferStatus:st};if(st==='sent')patch.estado='publicado';if(st==='scheduled'&&p.estado!=='publicado')patch.estado='programado';
-      db.collection('contenido').doc(p.id).update(patch).catch(()=>{});}
-  },{refetchInterval:300000});
-}
+// Regreso después de conectar una cuenta
+(function(){const m=/^#redes-(ok|error)=(.*)$/.exec(location.hash);if(!m)return;
+  history.replaceState(null,'',location.pathname+location.search);
+  setTimeout(()=>{showTab('redes');toast((m[1]==='ok'?'':'No se conectó: ')+decodeURIComponent(m[2]))},300)})();
 
 // ---------- CAMPAÑAS ----------
 function renderCampanas(){
@@ -886,7 +1002,8 @@ $('#form-post').addEventListener('submit',async ev=>{
     estado:$('#p-estado').value,link:$('#p-link').value.trim(),tema:$('#p-tema').value.trim(),copy:$('#p-copy').value.trim(),hashtags:$('#p-hashtags').value.trim(),media:$('#p-media').value.trim(),
     diseno:$('#p-diseno').value,desarrollo:$('#p-desarrollo').value,publica:$('#p-publica').value,entregaDiseno:$('#p-entrega').value,actualizado:new Date().toISOString()};
   if(!d.tema)return;
-  try{if(editingPost)await db.collection('contenido').doc(editingPost.id).set({...d,creado:editingPost.creado||d.actualizado,...(editingPost.bufferId?{bufferId:editingPost.bufferId,bufferStatus:editingPost.bufferStatus||'',bufferModo:editingPost.bufferModo||''}:{})});
+  try{if(editingPost)await db.collection('contenido').doc(editingPost.id).set({...d,creado:editingPost.creado||d.actualizado,...(editingPost.bufferId?{bufferId:editingPost.bufferId,bufferStatus:editingPost.bufferStatus||'',bufferModo:editingPost.bufferModo||''}:{}),
+      ...(editingPost.mediaTipo&&editingPost.media===d.media?{mediaTipo:editingPost.mediaTipo}:{}),...(editingPost.permalink?{permalink:editingPost.permalink,publicadoEn:editingPost.publicadoEn||''}:{})});
     else await db.collection('contenido').add({...d,creado:d.actualizado});
     $('#dlg-post').close();toast('Publicación guardada')}catch(e){writeFail(e)}
 });
@@ -1095,9 +1212,9 @@ document.addEventListener('visibilitychange',()=>{if(document.hidden&&shown.size
 setInterval(()=>{if(accAdmin&&!document.hidden&&!shown.size&&!$('#dlg-acc').open)loadAccesos()},60000);
 
 // ---------- shell ----------
-function render(){renderHoy();renderSemana();renderCampanas();renderAnalisis();renderEquipo();renderAccesos()}
+function render(){renderHoy();renderSemana();renderCampanas();renderAnalisis();renderEquipo();renderAccesos();renderRedes()}
 function showTab(t){document.querySelectorAll('nav.tabs button').forEach(b=>b.setAttribute('aria-selected',String(b.dataset.tab===t)));
-  for(const k of['hoy','semana','campanas','analisis','equipo','accesos'])$('#v-'+k).hidden=k!==t;try{localStorage.setItem('crm-tab2',t)}catch(e){}}
+  for(const k of['hoy','semana','campanas','analisis','equipo','accesos','redes'])$('#v-'+k).hidden=k!==t;try{localStorage.setItem('crm-tab2',t)}catch(e){}}
 document.querySelectorAll('nav.tabs button').forEach(b=>b.addEventListener('click',()=>showTab(b.dataset.tab)));
 document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>b.closest('dialog').close()));
 document.querySelectorAll('.sel-marca').forEach(s=>s.replaceChildren(...MARCAS.map(m=>h('option',{text:m}))));
@@ -1116,12 +1233,11 @@ render();
   if(user){try{const c=await user.can('data.write');if(c===false)canWrite=false}catch(e){}}
   let confirmed=0;const timer=setTimeout(()=>{if(confirmed<2)setStatus('Los datos aún no cargan; puede que estén desactualizados')},10000);
   const done=()=>{confirmed++;if(confirmed>=2){clearTimeout(timer);setStatus(canWrite?'Guardado en línea':'Solo lectura')}};
-  mcp=await claude.use('mcp');
-  loadAccesos();
+  loadAccesos();loadRedes();escucharRedes();
   db.collection('tareas').onSnapshot(s=>{tareas=s.docs.map(d=>({id:d.id,...d.data()}));tareasReady=true;render()},()=>{tareasReady=true;render()});
   let c1=false,c2=false;
   db.collection('campanas').onSnapshot(s=>{camps=s.docs.map(d=>({id:d.id,...d.data()}));campsReady=true;render()},()=>{campsReady=true;render()});
-  db.collection('contenido').onSnapshot(s=>{posts=s.docs.map(d=>({id:d.id,...d.data()}));postsReady=true;if(posts.some(p=>p.bufferId))bufferSync();if(!s.metadata.fromCache&&!c1){c1=true;done()}render()},()=>{clearTimeout(timer);postsReady=true;setStatus('No se pudo cargar el contenido');render()});
+  db.collection('contenido').onSnapshot(s=>{posts=s.docs.map(d=>({id:d.id,...d.data()}));postsReady=true;if(!s.metadata.fromCache&&!c1){c1=true;done()}render()},()=>{clearTimeout(timer);postsReady=true;setStatus('No se pudo cargar el contenido');render()});
   db.collection('equipo').onSnapshot(s=>{team=s.docs.map(d=>({id:d.id,...d.data()}));teamReady=true;if(!s.metadata.fromCache&&!c2){c2=true;done()}render()},()=>{clearTimeout(timer);teamReady=true;setStatus('No se pudo cargar el equipo');render()});
 })();
 })();
